@@ -129,7 +129,8 @@ def setup_main_gui(app):
     app.status_label.pack(side=tk.LEFT, padx=5)
     ttk.Label(status_bar, text="v1.0.0", foreground="#666666").pack(side=tk.RIGHT, padx=5)
 
-    app.root.resizable(False, False)
+    # Allow resizing to enable window manager controls
+    app.root.resizable(True, True)
 
 def show_help(app):
     help_window = tk.Toplevel(app.root)
