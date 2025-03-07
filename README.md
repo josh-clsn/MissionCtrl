@@ -1,4 +1,4 @@
-# Mission Ctrl Installation Guide
+# MissionCtrl Installation Guide
 
 Welcome to **Mission Ctrl**! This app lets you upload, download, and manage files on the Autonomi Network. This guide is designed for beginners—no coding experience needed. Just follow the steps below to get started!
 
