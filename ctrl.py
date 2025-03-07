@@ -86,22 +86,35 @@ class TestApp:
         self.initialize_app()
 
     def apply_dpi_scaling(self):
-        """Dynamically adjust Tkinter scaling based on system DPI."""
+        """Dynamically adjust Tkinter scaling based on system DPI.
+        Ensures that the scaling factor is not set below 1.0.
+        """
         try:
-            # Get DPI from the system (works on X11)
+            # Check if using an X11 session where xrdb is available
             if os.environ.get('XDG_SESSION_TYPE') == 'x11':
                 from subprocess import check_output
-                dpi = float(check_output(["xrdb", "-query"]).decode().split("Xft.dpi:")[1].split()[0])
-                # Default DPI is 96; calculate scaling factor
-                scaling_factor = dpi / 96.0
+                # Retrieve DPI value from the X resources (e.g., "Xft.dpi: 96")
+                xrdb_output = check_output(["xrdb", "-query"]).decode()
+                # Look for the DPI line and extract the value
+                dpi_lines = [line for line in xrdb_output.splitlines() if 'Xft.dpi:' in line]
+                if dpi_lines:
+                    dpi_value = float(dpi_lines[0].split()[1])
+                    # Calculate scaling factor, but ensure it's at least 1.0
+                    scaling_factor = max(1.0, dpi_value / 96.0)
+                else:
+                    scaling_factor = 1.0
             else:
-                scaling_factor = 1.0  # Fallback for Wayland or other sessions
-            # Apply scaling (e.g., 1.0 for 96 DPI, 2.0 for 192 DPI)
+                # Fallback for Wayland or other non-X11 sessions
+                scaling_factor = 1.0
+
+            # Apply the calculated scaling factor to Tkinter
             self.root.tk.call('tk', 'scaling', scaling_factor)
             logger.info(f"Applied Tkinter scaling factor: {scaling_factor}")
         except Exception as e:
             logger.warning(f"Failed to apply DPI scaling: {e}. Using default scaling.")
-            self.root.tk.call('tk', 'scaling', 2.0)  # Fallback to 2.0
+            # If an error occurs, fall back to a scaling factor of 2.0
+            self.root.tk.call('tk', 'scaling', 2.0)
+
 
     def initialize_app(self):
         os.environ.setdefault("EVM_NETWORK", "arbitrum-one")
