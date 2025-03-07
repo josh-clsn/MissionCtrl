@@ -1,4 +1,4 @@
-# wallet.py
+
 import os
 import json
 import base64
@@ -154,11 +154,11 @@ def create_wallet(app, wallet_window=None):
             new_account = app.w3.eth.account.create()
             private_key = new_account.key.hex()
             app.wallet = Wallet(private_key)
+            _show_wallet_creation_info(app, app.wallet.address(), private_key)
             encrypt_wallet(app, private_key, password)
             app.wallet_address_label.config(text=f"Wallet: {app.wallet.address()}")
             import asyncio
             asyncio.run_coroutine_threadsafe(app._update_balances(), app.loop)
-            _show_wallet_created_info(app, app.wallet.address(), private_key[:8] + "..." + private_key[-8:])
             app.status_label.config(text="Wallet created")
             password_window.destroy()
             if wallet_window is not None:
@@ -167,6 +167,32 @@ def create_wallet(app, wallet_window=None):
             messagebox.showerror("Error", f"Failed to create wallet: {str(e)}")
     
     tk.Button(password_window, text="Create", command=do_create).pack(pady=5)
+
+def _show_wallet_creation_info(app, address, private_key):
+    info_window = tk.Toplevel(app.root)
+    info_window.title("New Wallet Info")
+    info_window.geometry("400x250")
+    
+    text = tk.Text(info_window, height=8, width=50)
+    text.pack(pady=10, padx=10, expand=True, fill=tk.BOTH)
+    text.insert(tk.END, f"Address: {address}\n")
+    text.insert(tk.END, f"Private Key: {private_key}\n\n")
+    text.insert(tk.END, "Please save your private key securely!\n")
+    text.insert(tk.END, "This is the ONLY time it will be shown. Check the box below once you have saved it.")
+    text.bind("<Key>", lambda e: "break")
+    from gui import add_context_menu
+    add_context_menu(text)
+    
+    var = tk.BooleanVar(value=False)
+    def on_check():
+        if var.get():
+            close_button.config(state="normal")
+        else:
+            close_button.config(state="disabled")
+    check = tk.Checkbutton(info_window, text="I have saved my private key", variable=var, command=on_check)
+    check.pack(pady=5)
+    close_button = tk.Button(info_window, text="Close", command=info_window.destroy, state="disabled")
+    close_button.pack(pady=5)
 
 def send_funds(app, wallet_window=None):
     if not app.wallet:
@@ -280,10 +306,6 @@ def send_funds(app, wallet_window=None):
             app.is_processing = False
             app.stop_status_animation()
 
-    tk.Button(send_window, text="Send", command=lambda: 
-              asyncio.run_coroutine_threadsafe(do_send(), app.loop)
-             ).pack(pady=10)
-
 def _prompt_password(app, message):
     password_window = tk.Toplevel(app.root)
     password_window.title("Password Required")
@@ -328,4 +350,3 @@ def _show_wallet_created_info(app, address, pk_display):
     check.pack(pady=5)
     close_button = tk.Button(info_window, text="Close", command=info_window.destroy, state="disabled")
     close_button.pack(pady=5)
-
