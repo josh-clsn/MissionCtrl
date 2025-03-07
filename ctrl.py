@@ -109,6 +109,7 @@ class TestApp:
         # Configure the root window
         self.root.title("Mission Ctrl")
         self.root.geometry("630x550")
+        self.root.minsize(630, 550)  # Set minimum size to prevent shrinking too small
         self.root.configure(bg="#f0f2f5")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
@@ -258,24 +259,19 @@ class TestApp:
         if os.path.exists(self.wallet_file):
             def on_wallet_loaded(success):
                 if not success:
-                    logger.info("No valid wallet loaded")
-                    self.status_label.config(text="No wallet loaded")
+                    logger.info("No valid wallet loaded, prompting for wallet setup")
                     self.show_wallet_setup_wizard()
             wallet.show_wallet_password_prompt(self, on_wallet_loaded)
         else:
-            logger.info("No wallet file found, skipping prompt")
-            def on_wallet_loaded(success):
-                if not success:
-                    logger.info("No valid wallet loaded")
-                    self.status_label.config(text="No wallet loaded")
-                    self.show_wallet_setup_wizard()
-            on_wallet_loaded(False)
+            logger.info("No wallet file found, prompting for wallet setup")
+            self.show_wallet_setup_wizard()
 
     def show_wallet_setup_wizard(self):
         logger.info("Showing wallet setup wizard")
         wizard_window = tk.Toplevel(self.root)
         wizard_window.title("Welcome to Mission Ctrl - Wallet Setup")
         wizard_window.geometry("400x300")
+        wizard_window.minsize(400, 300)  # Set minimum size to prevent shrinking too small
         wizard_window.resizable(False, False)
         wizard_window.transient(self.root)
         wizard_window.grab_set()
@@ -286,7 +282,7 @@ class TestApp:
 
         tk.Button(wizard_window, text="Create a New Wallet", command=lambda: [wizard_window.destroy(), wallet.create_wallet(self)]).pack(pady=5)
         tk.Button(wizard_window, text="Import an Existing Wallet", command=lambda: [wizard_window.destroy(), wallet.import_wallet(self)]).pack(pady=5)
-        tk.Button(wizard_window, text="Learn More", command=gui.show_help).pack(pady=5)
+        tk.Button(wizard_window, text="Learn More", command=lambda: gui.show_help(self)).pack(pady=5)
 
     def _show_upload_success(self, address, filename, is_private):
         from tkinter import ttk, filedialog, messagebox
