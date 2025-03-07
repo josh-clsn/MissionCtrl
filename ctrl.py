@@ -11,7 +11,7 @@ from pathlib import Path
 from web3 import Web3
 from tkinter import ttk, filedialog, messagebox
 
-# Import our modules
+# Import modules
 import gui
 import wallet
 import public
