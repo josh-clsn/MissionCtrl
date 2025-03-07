@@ -91,4 +91,4 @@ Here’s a quick rundown to start using the app:
 - **Funds Safety**: Only send small amounts of ETH and ANT. The app developer isn’t responsible for lost funds.
 - **Private Key**: When creating a wallet, save your private key somewhere safe. You’ll lose access to your funds without it.
 
-Enjoy using Mission Ctrl!
+Enjoy trying Mission Ctrl!
