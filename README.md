@@ -2,7 +2,7 @@
 
 Welcome to **Mission Ctrl**! This app lets you upload, download, and manage files on the Autonomi Network. This guide is designed for beginners—no coding experience needed. Just follow the steps below to get started!
 
-Please note this App is a learning project and should be treated as such, only add small amounts of funds to your wallet and expect bugs.
+Please note this App is a "learning project" and should be treated as such, only add small amounts of funds to your wallet and expect bugs.
 
 ---
 
