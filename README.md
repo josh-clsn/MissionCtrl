@@ -68,7 +68,6 @@ Here’s a quick rundown to start using the app:
   - **Upload**: Send files to the blockchain (Public = anyone can see; Private = encrypted).
   - **Download**: Retrieve files using an address.
   - **Manage Files**: Organize or remove your uploads.
-- **Help**: Click the "Help" button in the app for more tips!
 
 ### Quick Start Example
 1. Go to the "Wallet" tab, click "Create a New Wallet," and set a password.
