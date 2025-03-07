@@ -42,7 +42,7 @@ Mission Ctrl needs some extra tools to work. Here’s how to install them:
 
 ---
 
-- On Mac/Linux, you might need `python3 ctrl.py`.
+- On Mac/Linux, `python3 ctrl.py`
 2. A warning window will appear:
 - Read it carefully—it warns about using small amounts of funds for safety.
 - Click "OK" to proceed (or "Cancel" to exit).
