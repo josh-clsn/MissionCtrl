@@ -11,7 +11,7 @@ from pathlib import Path
 from web3 import Web3
 from tkinter import ttk, filedialog, messagebox
 
-# Import modules
+# Import our modules
 import gui
 import wallet
 import public
@@ -51,8 +51,6 @@ class TestApp:
         self.uploaded_files = []      
         self.local_archives = []   
         self.w3 = Web3(Web3.HTTPProvider('https://arb1.arbitrum.io/rpc'))
-        import platform
-        from pathlib import Path
         if platform.system() == "Linux":
             self.default_dir = Path(os.path.expanduser("~/.local/share/missionctrl"))
         else:
@@ -67,7 +65,6 @@ class TestApp:
         self._current_operation = None
 
         # Show warning before creating the root window
-        from tkinter import messagebox, Tk
         if not messagebox.askokcancel(
             "Warning",
             "WARNING: Only send or import small amounts of funds. "
@@ -76,13 +73,35 @@ class TestApp:
             raise SystemExit("User declined the warning.")
 
         # Create the root window and set up the event loop
-        self.root = Tk()
+        self.root = tk.Tk()
         self.root.withdraw()
+
+        # Apply DPI scaling *after* creating the root window
+        self.apply_dpi_scaling()
+
         self.is_public_var = tk.BooleanVar(master=self.root, value=False)
         self.is_private_var = tk.BooleanVar(master=self.root, value=False)
         self.loop = asyncio.new_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
         self.initialize_app()
+
+    def apply_dpi_scaling(self):
+        """Dynamically adjust Tkinter scaling based on system DPI."""
+        try:
+            # Get DPI from the system (works on X11)
+            if os.environ.get('XDG_SESSION_TYPE') == 'x11':
+                from subprocess import check_output
+                dpi = float(check_output(["xrdb", "-query"]).decode().split("Xft.dpi:")[1].split()[0])
+                # Default DPI is 96; calculate scaling factor
+                scaling_factor = dpi / 96.0
+            else:
+                scaling_factor = 1.0  # Fallback for Wayland or other sessions
+            # Apply scaling (e.g., 1.0 for 96 DPI, 2.0 for 192 DPI)
+            self.root.tk.call('tk', 'scaling', scaling_factor)
+            logger.info(f"Applied Tkinter scaling factor: {scaling_factor}")
+        except Exception as e:
+            logger.warning(f"Failed to apply DPI scaling: {e}. Using default scaling.")
+            self.root.tk.call('tk', 'scaling', 2.0)  # Fallback to 2.0
 
     def initialize_app(self):
         os.environ.setdefault("EVM_NETWORK", "arbitrum-one")
