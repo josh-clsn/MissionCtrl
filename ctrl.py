@@ -11,7 +11,7 @@ from pathlib import Path
 from web3 import Web3
 from tkinter import ttk, filedialog, messagebox
 
-# Import modules
+# Import our modules
 import gui
 import wallet
 import public
@@ -48,8 +48,8 @@ class TestApp:
         self.loop = None
         self.client = None
         self.wallet = None
-        self.uploaded_files = []    
-        self.local_archives = []     
+        self.uploaded_files = []      
+        self.local_archives = []   
         self.w3 = Web3(Web3.HTTPProvider('https://arb1.arbitrum.io/rpc'))
         import platform
         from pathlib import Path
@@ -81,12 +81,10 @@ class TestApp:
         self.is_public_var = tk.BooleanVar(master=self.root, value=False)
         self.is_private_var = tk.BooleanVar(master=self.root, value=False)
         self.loop = asyncio.new_event_loop()
-        # Run the event loop in a separate thread
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
         self.initialize_app()
 
     def initialize_app(self):
-        # Set environment (if needed)
         os.environ.setdefault("EVM_NETWORK", "arbitrum-one")
         
         # Configure the root window
@@ -98,7 +96,7 @@ class TestApp:
         # Load persistent data
         self.load_persistent_data()
 
-        # Setup the GUI
+        # Setup the GUI (delegated to gui.py)
         gui.setup_main_gui(self)
 
         # Initialize client asynchronously
@@ -106,7 +104,7 @@ class TestApp:
         asyncio.run_coroutine_threadsafe(self.initialize_client(), self.loop)
         
         # Schedule the first balance update
-        self.root.after(1000, self.update_balances)  # Delay to ensure GUI is ready
+        self.root.after(1000, self.update_balances)
 
         # Show the main window
         self.root.deiconify()
@@ -190,7 +188,7 @@ class TestApp:
     def update_balances(self):
         if not hasattr(self, 'ant_balance_label') or not self.ant_balance_label.winfo_exists():
             logger.info("Skipping balance update: GUI not ready")
-            return  
+            return  # Skip if GUI elements are not yet initialized
         self.status_label.config(text="Requesting balance update")
         asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
         self.root.after(60000, self.update_balances) 
@@ -273,6 +271,7 @@ class TestApp:
 
     def _show_upload_success(self, address, filename, is_private):
         from tkinter import ttk, filedialog, messagebox
+        from gui import add_context_menu 
         # Create a new Toplevel window for the upload success dialog.
         success_window = tk.Toplevel(self.root)
         success_window.title(f"Upload Success - {filename}")
@@ -288,11 +287,12 @@ class TestApp:
         label_text = "Private Data Map" if is_private else "Public Chunk Address"
         ttk.Label(frame, text=f"{label_text} for {filename}:").pack(anchor="w")
 
-        # Show the address in a readonly entry.
+        # Show the address in a readonly entry with context menu.
         addr_entry = ttk.Entry(frame, width=80)
         addr_entry.pack(fill=tk.X, pady=5)
         addr_entry.insert(0, address)
         addr_entry.config(state="readonly")
+        add_context_menu(addr_entry) 
 
         ttk.Label(frame, text="Use this address to retrieve your data.").pack(anchor="w")
 
@@ -318,9 +318,7 @@ class TestApp:
         ttk.Button(success_window, text="Save", command=save_address).pack(pady=5)
         ttk.Button(success_window, text="Close", command=success_window.destroy).pack(pady=5)
 
-
-
-    # ----------------- Methods delegated modules -----------------
+    # ----------------- Methods delegated to other modules -----------------
 
     def upload_file(self):
         from tkinter import filedialog, messagebox
@@ -429,7 +427,7 @@ class TestApp:
     def retrieve_data(self):
         get.retrieve_data(self)
 
-    # Wallet options window combining wallet-related actions.
+    # A wallet options window combining wallet-related actions.
     def show_wallet_options(self):
         wallet_window = tk.Toplevel(self.root)
         wallet_window.title("Wallet Options")
@@ -459,7 +457,8 @@ class TestApp:
     # This method is used by view.py when the user clicks a "View" button on a file in an archive.
     def view_archive_file(self, addr, name):
         view.view_file(self, addr, name)
-        
+
+    # To allow view.py to call this method using our app, we assign it as _view_archive_file.
     _view_archive_file = view.view_file
 
 if __name__ == "__main__":
