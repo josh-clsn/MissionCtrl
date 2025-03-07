@@ -42,6 +42,8 @@ Mission Ctrl needs some extra tools to work. Here’s how to install them:
 
 ---
 
+## Step 4: Start The App
+
 - On Mac/Linux, `python3 ctrl.py`
 2. A warning window will appear:
 - Read it carefully—it warns about using small amounts of funds for safety.
