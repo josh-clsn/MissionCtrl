@@ -165,7 +165,7 @@ Here’s a quick rundown to start using the app:
 1. Go to the "Wallet" tab, click "Create a New Wallet," and set a password.
 2. Send a small amount of ETH and ANT to your wallet address.
 3. Go to "Upload," check "Public," and upload a file. (start small)
-4. Copy the address shown, then use it in "Download" to get your file back!
+4. Copy the address shown, then use it in "Get" to get your file back!
 
 ---
 
