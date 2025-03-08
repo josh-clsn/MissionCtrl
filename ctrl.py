@@ -126,7 +126,7 @@ class TestApp:
     def update_balances(self):
         if self.wallet:
             asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
-        self.root.after(60000, self.update_balances)
+        self.root.after(120000, self.update_balances)
 
     async def _update_balances(self):
         ant_balance = int(await self.wallet.balance())
