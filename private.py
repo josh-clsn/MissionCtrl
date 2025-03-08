@@ -66,7 +66,7 @@ async def upload_private(app, file_path, from_queue=False):
         app.status_label.config(text="Upload timeout")
     except Exception as e:
         logger.error("Upload error: %s", e)
-        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nCheck your ANT balance in the Wallet tab."))
+        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nNothing insightful to report sorry. ."))
         app.status_label.config(text="Upload failed")
     finally:
         if not from_queue:
@@ -146,7 +146,7 @@ async def upload_private_directory(app, dir_path):
         app.status_label.config(text="Upload timeout")
     except Exception as e:
         logger.error("Upload error: %s", e)
-        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nCheck your ANT balance in the Wallet tab."))
+        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nNothing insightful to report sorry. ."))
         app.status_label.config(text="Upload failed")
     finally:
         app.is_processing = False
