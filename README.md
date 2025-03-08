@@ -156,10 +156,10 @@ Here’s a quick rundown to start using the app:
   - Get them from a crypto exchange, community faucet, or community member.
   - Send them to the wallet address shown in the "Wallet" tab.
 - **Tabs**:
-  - **Wallet**: Manage your funds and wallet settings.
+  - **Wallet**: Manage your funds and wallet.
   - **Upload**: Uploads files to Autonomi.
   - **Download**: Retrieve files using an address.
-  - **Manage Files**: Organize or remove your uploads.
+  - **Manage Files**: Your uploaded files.
 
 ### Quick Start Example
 1. Go to the "Wallet" tab, click "Create a New Wallet," and set a password.
