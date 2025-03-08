@@ -72,8 +72,14 @@ python -m venv venv
 ```
 
 ### **Step 2: Activate the Virtual Environment**
-```powershell
+For **Command Prompt (cmd)**:
+```cmd
 venv\Scriptsctivate
+```
+
+For **PowerShell**:
+```powershell
+venv\Scripts\Activate.ps1
 ```
 
 ### **Step 3: Upgrade `pip`**
@@ -177,3 +183,4 @@ Here’s a quick rundown to start using the app:
 - **Private Key**: When creating a wallet, save your private key somewhere safe. You’ll lose access to your funds without it.
 
 Enjoy trying **Mission Ctrl**! 🚀
+
