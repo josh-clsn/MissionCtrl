@@ -151,7 +151,6 @@ deactivate
 Here’s a quick rundown to start using the app:
 
 - **Wallet**: You need a wallet to store funds and pay for uploads.
-  - First time? The app will guide you to create or import a wallet.
 - **Funds**: Add a tiny amount of ETH and ANT tokens to your wallet:
   - Get them from a crypto exchange, community faucet, or community member.
   - Send them to the wallet address shown in the "Wallet" tab.
