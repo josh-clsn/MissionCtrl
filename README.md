@@ -157,7 +157,7 @@ Here’s a quick rundown to start using the app:
   - Send them to the wallet address shown in the "Wallet" tab.
 - **Tabs**:
   - **Wallet**: Manage your funds and wallet settings.
-  - **Upload**: Send files to the blockchain (Public = anyone can see; Private = encrypted).
+  - **Upload**: Uploads files to Autonomi.
   - **Download**: Retrieve files using an address.
   - **Manage Files**: Organize or remove your uploads.
 
