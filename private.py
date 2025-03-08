@@ -129,7 +129,7 @@ async def upload_private_directory(app, dir_path):
             app.client.dir_upload(dir_path, app.wallet),
             timeout=15000
         )
-        data_maps = archive.data_maps()  # Directly call data_maps() on the PrivateArchive object
+        data_maps = archive.data_maps()
         if data_maps:
             access_token = list(data_maps.values())[0].to_hex()
             dir_name = os.path.basename(dir_path)
