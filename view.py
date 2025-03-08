@@ -15,6 +15,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 def detect_and_display_content(data, parent_frame, filename="data"):
     mime_type, _ = mimetypes.guess_type(filename)
     if mime_type is None:
+        # Fallback MIME type detection based on file signatures
         if data.startswith(b'\x89PNG'):
             mime_type = 'image/png'
         elif data.startswith(b'\xff\xd8'):
@@ -89,20 +90,11 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     
+    # Create window and bind to update scroll region dynamically
     canvas.create_window((0, 0), window=content_frame, anchor="nw")
     content_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
-    if is_private and archive:
-        ttk.Label(content_frame, text="Retrieved Private Archive:", font=("Arial", 12, "bold")).pack(pady=5)
-        file_list = list(archive.files())  # List of (path, metadata) tuples
-        if not file_list:
-            ttk.Label(content_frame, text="No files found in archive.").pack()
-        else:
-            for path, metadata in file_list:
-                frame = ttk.Frame(content_frame)
-                frame.pack(fill=tk.X, pady=2, padx=5)
-                ttk.Label(frame, text=f"- {path} (Size: {metadata.size} bytes)").pack(side=tk.LEFT, padx=5)
-    elif is_private:
+    if is_private:
         ttk.Label(content_frame, text="Retrieved Private Data:", font=("Arial", 12, "bold")).pack(pady=5)
         detect_and_display_content(data, content_frame)
     else:
@@ -117,21 +109,33 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False)
             else:
                 chunk_addresses = list(archive.addresses()) if archive else []
                 file_names = [item[0] for item in file_list]
+                logger.debug("File names: %s, Addresses: %s", file_names, chunk_addresses)
                 for name, addr in zip(file_names, chunk_addresses):
                     frame = ttk.Frame(content_frame)
-                    frame.pack(fill=tk.X, pady=2, padx=5)
+                    frame.pack(fill=tk.X, pady=2, padx=5)  # Added padx for spacing
                     ttk.Label(frame, text=f"- {name} (Address: {addr})").pack(side=tk.LEFT, padx=5)
-                    view_button = ttk.Button(frame, text="View", command=lambda a=addr, n=name: view_file(app, a, n))
+                    
+                    # Loading label for each View button
+                    loading_label = ttk.Label(frame, text="")
+                    loading_label.pack(side=tk.RIGHT, padx=5)
+                    
+                    # Create the button first
+                    view_button = ttk.Button(frame, text="View")
+                    # Now assign the command using the already defined view_button
+                    view_button.config(command=lambda a=addr, n=name, b=view_button, l=loading_label: view_file(app, a, n, b, l))
                     view_button.pack(side=tk.RIGHT, padx=5)
 
+    # Ensure content_frame is updated before adding buttons
     content_frame.update_idletasks()
 
     button_frame = ttk.Frame(view_window)
     button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
 
+    # Loading indicator for bottom buttons
     bottom_loading_label = ttk.Label(button_frame, text="")
     bottom_loading_label.pack(side=tk.LEFT, padx=5)
 
+    # State tracking for bottom buttons
     button_states = {"save": False, "save_all": False}
 
     def set_loading_state(button, state, message="", label=None):
@@ -250,6 +254,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False)
         save_all_button.pack(side=tk.LEFT, padx=5)
     ttk.Button(button_frame, text="Close", command=lambda: (logger.info("Closing window..."), view_window.destroy())).pack(side=tk.LEFT, padx=5)
 
+    # Ensure the window updates to show all elements
     view_window.update_idletasks()
 
 def view_file(app, addr, name, button, loading_label):
