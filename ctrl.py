@@ -1,56 +1,33 @@
-# ctrl.py
-import sys
-import tkinter as tk
 import asyncio
+import json
+import logging
 import os
 import threading
-import logging
-import json
-import platform
 from pathlib import Path
 from web3 import Web3
-from tkinter import ttk, filedialog, messagebox
-
-# Import our modules
-import gui
-import wallet
+from autonomi_client import Client, Network, Wallet
 import public
 import private
-import get
+import gui
+import wallet
 import view
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog, filedialog, Toplevel
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MissionCtrl")
-
-ANT_TOKEN_ADDRESS = "0xa78d8321B20c4Ef90eCd72f2588AA985A4BDb684"
-ANT_ABI = [
-    {
-        "constant": False,
-        "inputs": [
-            {"name": "_to", "type": "address"},
-            {"name": "_value", "type": "uint256"}
-        ],
-        "name": "transfer",
-        "outputs": [{"name": "", "type": "bool"}],
-        "type": "function"
-    },
-    {
-        "constant": True,
-        "inputs": [{"name": "_owner", "type": "address"}],
-        "name": "balanceOf",
-        "outputs": [{"name": "balance", "type": "uint256"}],
-        "type": "function"
-    }
-]
 
 class TestApp:
     def __init__(self):
+        # Initialize attributes
         self.loop = None
         self.client = None
         self.wallet = None
-        self.uploaded_files = []      
-        self.local_archives = []   
+        self.uploaded_files = []
+        self.uploaded_private_files = []
+        self.local_archives = []
         self.w3 = Web3(Web3.HTTPProvider('https://arb1.arbitrum.io/rpc'))
+        import platform
+        from pathlib import Path
         if platform.system() == "Linux":
             self.default_dir = Path(os.path.expanduser("~/.local/share/missionctrl"))
         else:
@@ -63,6 +40,7 @@ class TestApp:
         self.current_dot_idx = 0
         self.status_update_task = None
         self._current_operation = None
+        self.is_processing = False
 
         # Show warning before creating the root window
         if not messagebox.askokcancel(
@@ -74,217 +52,58 @@ class TestApp:
 
         # Create the root window and set up the event loop
         self.root = tk.Tk()
-        self.root.withdraw()
-
-        # Apply DPI scaling *after* creating the root window
-        self.apply_dpi_scaling()
-
+        self.root.title("Mission Ctrl")
+        self.root.withdraw()  # Hide initially
         self.is_public_var = tk.BooleanVar(master=self.root, value=False)
         self.is_private_var = tk.BooleanVar(master=self.root, value=False)
+        self.perform_cost_calc_var = tk.BooleanVar(master=self.root, value=True)
         self.loop = asyncio.new_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
         self.initialize_app()
 
-    def apply_dpi_scaling(self):
-        """Dynamically adjust Tkinter scaling based on system DPI.
-        Ensures that the scaling factor is not set below 1.0.
-        """
-        try:
-            # Check if using an X11 session where xrdb is available
-            if os.environ.get('XDG_SESSION_TYPE') == 'x11':
-                from subprocess import check_output
-                # Retrieve DPI value from the X resources (e.g., "Xft.dpi: 96")
-                xrdb_output = check_output(["xrdb", "-query"]).decode()
-                # Look for the DPI line and extract the value
-                dpi_lines = [line for line in xrdb_output.splitlines() if 'Xft.dpi:' in line]
-                if dpi_lines:
-                    dpi_value = float(dpi_lines[0].split()[1])
-                    # Calculate scaling factor, but ensure it's at least 1.0
-                    scaling_factor = max(1.0, dpi_value / 96.0)
-                else:
-                    scaling_factor = 1.0
-            else:
-                # Fallback for Wayland or other non-X11 sessions
-                scaling_factor = 1.0
-
-            # Apply the calculated scaling factor to Tkinter
-            self.root.tk.call('tk', 'scaling', scaling_factor)
-            logger.info(f"Applied Tkinter scaling factor: {scaling_factor}")
-        except Exception as e:
-            logger.warning(f"Failed to apply DPI scaling: {e}. Using default scaling.")
-            # If an error occurs, fall back to a scaling factor of 2.0
-            self.root.tk.call('tk', 'scaling', 2.0)
-
+    def on_closing(self):
+        self.save_persistent_data()
+        if self.loop:
+            self.loop.call_soon_threadsafe(self.loop.stop)
+        self.root.destroy()
+        logger.info("Closing window...")
 
     def initialize_app(self):
-        os.environ.setdefault("EVM_NETWORK", "arbitrum-one")
-        
-        # Configure the root window
-        self.root.title("Mission Ctrl")
-        self.root.geometry("630x550")
-        self.root.minsize(630, 550)  # Set minimum size to prevent shrinking too small
-        self.root.configure(bg="#f0f2f5")
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
-        # Load persistent data
         self.load_persistent_data()
-
-        # Setup the GUI (delegated to gui.py)
-        gui.setup_main_gui(self)
-
-        # Initialize client asynchronously
-        logger.info("Scheduling client initialization")
-        asyncio.run_coroutine_threadsafe(self.initialize_client(), self.loop)
-        
-        # Schedule the first balance update
+        asyncio.run_coroutine_threadsafe(self.init_client(), self.loop)
+        self.root.after(100, self.check_client_connection)
         self.root.after(1000, self.update_balances)
-
-        # Show the main window
+        self.root.after(1000, self.start_status_update)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        gui.setup_main_gui(self)
         self.root.deiconify()
 
-    def start_status_animation(self):
-        if self.status_update_task is None:
-            def update_status():
-                if getattr(self, "is_processing", False):
-                    if self._current_operation == 'upload':
-                        msg = "Uploading files"
-                    elif self._current_operation == 'archive':
-                        msg = "Creating archive"
-                    elif self._current_operation == 'download':
-                        msg = "Downloading data"
-                    else:
-                        msg = "Processing"
-                    self.status_label.config(text=f"{msg}{self.status_dots[self.current_dot_idx]}")
-                    self.current_dot_idx = (self.current_dot_idx + 1) % len(self.status_dots)
-                    self.root.after(500, update_status)
-                else:
-                    self.status_update_task = None
-                    self.status_label.config(text="Ready")
-            self.status_update_task = self.root.after(0, update_status)
-
-    def stop_status_animation(self):
-        if self.status_update_task is not None:
-            self.root.after_cancel(self.status_update_task)
-            self.status_update_task = None
-        self.status_label.config(text="Ready")
-
-    def load_persistent_data(self):
-        try:
-            if os.path.exists(self.data_file):
-                with open(self.data_file, 'r') as f:
-                    data = json.load(f)
-                self.uploaded_files = [(item["filename"], item["chunk_addr"]) for item in data.get("uploaded_files", [])]
-                self.local_archives = [(item["addr"], item["nickname"], item["is_private"]) for item in data.get("local_archives", [])]
-                logger.info("Loaded persistent data from %s", self.data_file)
-        except Exception as e:
-            logger.error("Failed to load persistent data: %s", e)
-            self.uploaded_files = []
-            self.local_archives = []
-
-    def save_persistent_data(self):
-        try:
-            data = {
-                "uploaded_files": [{"filename": f, "chunk_addr": a} for f, a in self.uploaded_files],
-                "local_archives": [{"addr": a, "nickname": n, "is_private": p} for a, n, p in self.local_archives]
-            }
-            with open(self.data_file, 'w') as f:
-                json.dump(data, f, indent=4)
-            logger.info("Saved persistent data to %s", self.data_file)
-        except Exception as e:
-            logger.error("Failed to save persistent data: %s", e)
-
-    def on_closing(self):
-        logger.info("Closing window...")
-        self.save_persistent_data()
-        
-        # Schedule cleanup of the event loop asynchronously
-        def schedule_cleanup():
-            if self.loop.is_running():
-                asyncio.run_coroutine_threadsafe(self._cleanup_loop(), self.loop)
-        
-        self.root.after(0, schedule_cleanup)
-        self.root.destroy()
-
-    async def _cleanup_loop(self):
-        logger.info("Cleaning up event loop")
-        # Cancel all pending tasks
-        tasks = [task for task in asyncio.all_tasks(self.loop) if task is not asyncio.current_task(self.loop)]
-        for task in tasks:
-            task.cancel()
-        # Wait for tasks to complete
-        await asyncio.gather(*tasks, return_exceptions=True)
-        # Shutdown async generators
-        await self.loop.shutdown_asyncgens()
-        # Close the loop
-        self.loop.close()
-
-    def update_balances(self):
-        if not hasattr(self, 'ant_balance_label') or not self.ant_balance_label.winfo_exists():
-            logger.info("Skipping balance update: GUI not ready")
-            return  # Skip if GUI elements are not yet initialized
-        self.status_label.config(text="Requesting balance update")
-        asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
-        self.root.after(60000, self.update_balances) 
-
-    async def _update_balances(self):
-        if not self.wallet:
-            self.ant_balance_label.config(text="ANT Balance: Not Connected")
-            self.eth_balance_label.config(text="ETH Balance: Not Connected")
-            return
-        try:
-            self.status_label.config(text="Fetching wallet balances")
-            ant_balance = int(await self.wallet.balance())
-            ant_formatted = ant_balance / 10**18
-            eth_balance = self.w3.eth.get_balance(self.wallet.address())
-            eth_formatted = self.w3.from_wei(eth_balance, 'ether')
-            self.ant_balance_label.config(text=f"ANT Balance: {ant_formatted}")
-            self.eth_balance_label.config(text=f"ETH Balance: {eth_formatted:.6f}")
-            logger.info("Balances updated - ANT: %s, ETH: %s", ant_formatted, eth_formatted)
-            self.status_label.config(text="Ready")
-        except Exception as e:
-            logger.error("Failed to update balances: %s", e)
-            self.ant_balance_label.config(text="ANT Balance: Error")
-            self.eth_balance_label.config(text="ETH Balance: Error")
-            self.status_label.config(text="Balance fetch failed")
-
-    async def initialize_client(self):
-        try:
-            from autonomi_client import Client, Network
-            network = Network(False)
-            self.status_label.config(text="Initializing network connection")
-            self.client = await Client.init()
-            logger.info("Connected to Autonomi network")
-            self.connection_label.config(text="Network: Connected")
-            self.status_label.config(text="Network connection established")
-            
-            # Schedule wallet prompt with a delay to ensure GUI is ready
-            self.root.after(1000, self._schedule_wallet_prompt)
-            
-            await self._update_balances()
-        except Exception as e:
-            logger.error("Initialization failed: %s", e)
-            self.connection_label.config(text=f"Network: Failed ({str(e)})")
-            self.status_label.config(text="Network connection failed")
+    async def init_client(self):
+        self.client = await Client.init()
+        self.connection_label.config(text="Network: Initializing...")
+        logger.info("Client initialized: %s", self.client)
+        if os.path.exists(self.wallet_file):
+            self.root.after(0, self._schedule_wallet_prompt)
+        else:
+            self.wallet_address_label.config(text="Wallet: Not Created")
+            logger.info("No wallet file found at %s", self.wallet_file)
+        self.connection_label.config(text="Network: Connected to Autonomi")
 
     def _schedule_wallet_prompt(self):
         logger.info("Scheduling wallet password prompt")
         logger.info("Wallet file exists: %s", os.path.exists(self.wallet_file))
-        if os.path.exists(self.wallet_file):
-            def on_wallet_loaded(success):
-                if not success:
-                    logger.info("No valid wallet loaded, prompting for wallet setup")
-                    self.show_wallet_setup_wizard()
-            wallet.show_wallet_password_prompt(self, on_wallet_loaded)
-        else:
-            logger.info("No wallet file found, prompting for wallet setup")
-            self.show_wallet_setup_wizard()
+        def on_wallet_loaded(success):
+            if not success:
+                logger.info("No valid wallet loaded, prompting for wallet setup")
+                self.show_wallet_setup_wizard()
+        wallet.show_wallet_password_prompt(self, on_wallet_loaded)
 
     def show_wallet_setup_wizard(self):
         logger.info("Showing wallet setup wizard")
-        wizard_window = tk.Toplevel(self.root)
+        wizard_window = Toplevel(self.root)
         wizard_window.title("Welcome to Mission Ctrl - Wallet Setup")
         wizard_window.geometry("400x300")
-        wizard_window.minsize(400, 300)  # Set minimum size to prevent shrinking too small
+        wizard_window.minsize(400, 300)
         wizard_window.resizable(False, False)
         wizard_window.transient(self.root)
         wizard_window.grab_set()
@@ -297,59 +116,27 @@ class TestApp:
         tk.Button(wizard_window, text="Import an Existing Wallet", command=lambda: [wizard_window.destroy(), wallet.import_wallet(self)]).pack(pady=5)
         tk.Button(wizard_window, text="Learn More", command=lambda: gui.show_help(self)).pack(pady=5)
 
-    def _show_upload_success(self, address, filename, is_private):
-        from tkinter import ttk, filedialog, messagebox
-        from gui import add_context_menu 
-        # Create a new Toplevel window for the upload success dialog.
-        success_window = tk.Toplevel(self.root)
-        success_window.title(f"Upload Success - {filename}")
-        success_window.geometry("400x200")
-        success_window.transient(self.root)
-        success_window.grab_set()
+    def check_client_connection(self):
+        if self.client:
+            self.connection_label.config(text="Network: Connected to Autonomi")
+        else:
+            self.connection_label.config(text="Network: Disconnected")
+        self.root.after(5000, self.check_client_connection)
 
-        # Create a frame inside the dialog.
-        frame = ttk.Frame(success_window)
-        frame.pack(pady=10, padx=10, expand=True, fill=tk.BOTH)
+    def update_balances(self):
+        if self.wallet:
+            asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
+        self.root.after(60000, self.update_balances)
 
-        # Determine the label text based on whether data is private.
-        label_text = "Private Data Map" if is_private else "Public Chunk Address"
-        ttk.Label(frame, text=f"{label_text} for {filename}:").pack(anchor="w")
-
-        # Show the address in a readonly entry with context menu.
-        addr_entry = ttk.Entry(frame, width=80)
-        addr_entry.pack(fill=tk.X, pady=5)
-        addr_entry.insert(0, address)
-        addr_entry.config(state="readonly")
-        add_context_menu(addr_entry) 
-
-        ttk.Label(frame, text="Use this address to retrieve your data.").pack(anchor="w")
-
-        # Define a function to save the address to a file.
-        def save_address():
-            save_path = filedialog.asksaveasfilename(
-                parent=success_window,
-                initialdir=str(self.default_dir),
-                defaultextension=".txt",
-                filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-                title=f"Save {filename} Address"
-            )
-            if save_path:
-                try:
-                    with open(save_path, "w") as f:
-                        f.write(address)
-                    success_window.destroy()
-                    messagebox.showinfo("Success", f"Address saved to {save_path}")
-                except Exception as e:
-                    messagebox.showerror("Error", f"Failed to save address: {e}")
-
-        # Create Save and Close buttons in the dialog.
-        ttk.Button(success_window, text="Save", command=save_address).pack(pady=5)
-        ttk.Button(success_window, text="Close", command=success_window.destroy).pack(pady=5)
-
-    # ----------------- Methods delegated to other modules -----------------
+    async def _update_balances(self):
+        ant_balance = int(await self.wallet.balance())
+        eth_balance = self.w3.eth.get_balance(self.wallet.address())
+        self.ant_balance_label.config(text=f"ANT Balance: {ant_balance / 10**18:.6f}")
+        self.eth_balance_label.config(text=f"ETH Balance: {eth_balance / 10**18:.6f}")
+        logger.info("Balances updated - ANT: %s, ETH: %s", ant_balance / 10**18, eth_balance / 10**18)
 
     def upload_file(self):
-        from tkinter import filedialog, messagebox
+        from tkinter import filedialog, messagebox, Toplevel, ttk, StringVar
         self.status_label.config(text="Checking upload options...")
         public_selected = self.is_public_var.get()
         private_selected = self.is_private_var.get()
@@ -361,21 +148,66 @@ class TestApp:
             )
             self.status_label.config(text="Ready")
             return
-        file_path = filedialog.askopenfilename(
-            title="Select a File to Upload",
-            filetypes=[("All Files", "*.*"), ("Images", "*.png *.jpg *.jpeg")]
-        )
-        if not file_path:
-            self.status_label.config(text="Ready")
-            return
-        self.is_processing = True
-        self._current_operation = 'upload'
-        self.start_status_animation()
-        self.status_label.config(text=f"Uploading file: {os.path.basename(file_path)}")
-        if public_selected:
-            asyncio.run_coroutine_threadsafe(public.upload_public(self, file_path), self.loop)
-        elif private_selected:
-            asyncio.run_coroutine_threadsafe(private.upload_private(self, file_path), self.loop)
+
+        # Custom dialog for choosing upload type
+        choice_window = Toplevel(self.root)
+        choice_window.title("Upload Type")
+        choice_window.geometry("300x150")
+        choice_window.transient(self.root)
+        choice_window.grab_set()
+
+        choice_var = StringVar(value="files")
+        ttk.Label(choice_window, text="Select upload type:").pack(pady=10)
+        ttk.Radiobutton(choice_window, text="Files", variable=choice_var, value="files").pack(anchor="w", padx=20, pady=5)
+        ttk.Radiobutton(choice_window, text="Directory", variable=choice_var, value="directory").pack(anchor="w", padx=20, pady=5)
+
+        def on_ok():
+            choice_window.destroy()
+            initial_dir = os.path.expanduser("~")
+
+            if choice_var.get() == "files":
+                file_paths = filedialog.askopenfilenames(
+                    title="Select Files to Upload",
+                    filetypes=[("All Files", "*.*"), ("Images", "*.png *.jpg *.jpeg")],
+                    initialdir=initial_dir
+                )
+                if not file_paths:
+                    self.status_label.config(text="Ready")
+                    return
+                paths_to_upload = file_paths
+            else:
+                dir_path = filedialog.askdirectory(
+                    title="Select Directory to Upload",
+                    initialdir=initial_dir
+                )
+                if not dir_path:
+                    self.status_label.config(text="Ready")
+                    return
+                paths_to_upload = [dir_path]
+
+            self.is_processing = True
+            self._current_operation = 'cost_calc' if self.perform_cost_calc_var.get() else 'upload'
+
+            for path in paths_to_upload:
+                if os.path.isdir(path):
+                    self.status_label.config(text=f"{'Getting upload cost quote, please wait...' if self.perform_cost_calc_var.get() else 'Uploading directory'} {os.path.basename(path)}")
+                    if public_selected:
+                        asyncio.run_coroutine_threadsafe(public.upload_public_directory(self, path), self.loop)
+                    elif private_selected:
+                        asyncio.run_coroutine_threadsafe(private.upload_private_directory(self, path), self.loop)
+                else:
+                    self.status_label.config(text=f"{'Getting upload cost quote, please wait...' if self.perform_cost_calc_var.get() else 'Uploading file'} {os.path.basename(path)}")
+                    if public_selected:
+                        asyncio.run_coroutine_threadsafe(public.upload_public(self, path), self.loop)
+                    elif private_selected:
+                        asyncio.run_coroutine_threadsafe(private.upload_private(self, path), self.loop)
+
+            self.is_processing = False 
+            self.stop_status_animation()
+            self.status_label.config(text="Upload(s) scheduled")
+
+        ttk.Button(choice_window, text="OK", command=on_ok).pack(pady=10)
+        choice_window.protocol("WM_DELETE_WINDOW", lambda: [choice_window.destroy(), self.status_label.config(text="Ready")])
 
     def add_to_upload_queue(self):
         from tkinter import filedialog, messagebox
@@ -392,7 +224,8 @@ class TestApp:
             return
         file_paths = filedialog.askopenfilenames(
             title="Select Files to Upload",
-            filetypes=[("All Files", "*.*"), ("Images", "*.png *.jpg *.jpeg")]
+            filetypes=[("All Files", "*.*"), ("Images", "*.png *.jpg *.jpeg")],
+            initialdir=os.path.expanduser("~")
         )
         if not file_paths:
             self.status_label.config(text="Ready")
@@ -403,18 +236,6 @@ class TestApp:
             self.queue_listbox.insert(tk.END, f"{upload_type.capitalize()}: {os.path.basename(file_path)}")
         self.queue_label.config(text=f"Queue: {len(self.upload_queue)} files")
         self.status_label.config(text=f"Added {len(file_paths)} files to queue")
-
-    def remove_from_queue(self):
-        from tkinter import messagebox
-        selection = self.queue_listbox.curselection()
-        if not selection:
-            messagebox.showwarning("Selection Error", "Please select a file to remove from the queue.")
-            return
-        index = selection[0]
-        self.upload_queue.pop(index)
-        self.queue_listbox.delete(index)
-        self.queue_label.config(text=f"Queue: {len(self.upload_queue)} files")
-        self.status_label.config(text="File removed from queue")
 
     def start_upload_queue(self):
         from tkinter import messagebox
@@ -446,6 +267,18 @@ class TestApp:
         self.stop_status_animation()
         self.root.after(0, lambda: self.status_label.config(text="Queue processing completed"))
 
+    def remove_from_queue(self):
+        from tkinter import messagebox
+        selected = self.queue_listbox.curselection()
+        if not selected:
+            messagebox.showwarning("Selection Error", "Please select at least one item to remove from the queue.")
+            return
+        for index in sorted(selected, reverse=True):
+            self.upload_queue.pop(index)
+            self.queue_listbox.delete(index)
+        self.queue_label.config(text=f"Queue: {len(self.upload_queue)} files")
+        self.status_label.config(text=f"Removed {len(selected)} items from queue")
+
     def manage_public_files(self):
         public.manage_public_files(self)
 
@@ -453,11 +286,11 @@ class TestApp:
         private.manage_private_files(self)
 
     def retrieve_data(self):
-        get.retrieve_data(self)
+        from get import retrieve_data
+        retrieve_data(self)
 
-    # A wallet options window combining wallet-related actions.
     def show_wallet_options(self):
-        wallet_window = tk.Toplevel(self.root)
+        wallet_window = Toplevel(self.root)
         wallet_window.title("Wallet Options")
         wallet_window.geometry("300x250")
         tk.Button(wallet_window, text="Delete Current Wallet",
@@ -482,12 +315,79 @@ class TestApp:
         tk.Button(wallet_window, text="Close",
                   command=wallet_window.destroy).pack(pady=5)
 
-    # This method is used by view.py when the user clicks a "View" button on a file in an archive.
     def view_archive_file(self, addr, name):
         view.view_file(self, addr, name)
 
-    # To allow view.py to call this method using our app, we assign it as _view_archive_file.
-    _view_archive_file = view.view_file
+    def start_status_update(self):
+        if self.status_update_task:
+            self.root.after_cancel(self.status_update_task)
+        self.status_update_task = self.root.after(500, self.update_status)
+
+    def update_status(self):
+        if self.is_processing:
+            self.status_label.config(text=f"{self.status_dots[self.current_dot_idx]} {self._current_operation_message()} {self.status_dots[self.current_dot_idx]}")
+            self.current_dot_idx = (self.current_dot_idx + 1) % len(self.status_dots)
+        self.start_status_update()
+
+    def _current_operation_message(self):
+        if self._current_operation == 'upload':
+            return "Uploading files"
+        elif self._current_operation == 'cost_calc':
+            return "Getting upload cost quote, please wait"
+        elif self._current_operation == 'archive':
+            return "Archiving files"
+        elif self._current_operation == 'download':
+            return "Downloading data"
+        return "Processing"
+
+    def stop_status_animation(self):
+        if self.status_update_task:
+            self.root.after_cancel(self.status_update_task)
+            self.status_update_task = None
+            self.current_dot_idx = 0
+            self.status_label.config(text="Ready")
+
+    def start_status_animation(self):
+        if not self.status_update_task:
+            self.start_status_update()
+
+    def _show_upload_success(self, address, filename, is_private):
+        from tkinter import messagebox
+        messagebox.showinfo("Success", f"Uploaded {filename} to address: {address[:10]}... ({'Private' if is_private else 'Public'})")
+        self.status_label.config(text="Upload successful")
+
+    def load_persistent_data(self):
+        try:
+            if os.path.exists(self.data_file):
+                with open(self.data_file, 'r') as f:
+                    data = json.load(f)
+                self.uploaded_files = [(item["filename"], item["chunk_addr"]) for item in data.get("uploaded_files", [])]
+                self.local_archives = [(item["addr"], item["nickname"], item["is_private"]) for item in data.get("local_archives", [])]
+                self.upload_queue = [(item["type"], item["path"]) for item in data.get("upload_queue", [])]
+                self.uploaded_private_files = [(item["filename"], item["access_token"]) for item in data.get("uploaded_private_files", [])]
+                logger.info("Loaded persistent data from %s", self.data_file)
+        except Exception as e:
+            logger.error("Failed to load persistent data: %s", e)
+            self.uploaded_files = []
+            self.local_archives = []
+            self.upload_queue = []
+            self.uploaded_private_files = []
+
+    def save_persistent_data(self):
+        try:
+            data = {
+                "uploaded_files": [{"filename": f, "chunk_addr": a} for f, a in self.uploaded_files],
+                "local_archives": [{"addr": a, "nickname": n, "is_private": p} for a, n, p in self.local_archives],
+                "upload_queue": [{"type": t, "path": p} for t, p in self.upload_queue],
+                "uploaded_private_files": [{"filename": f, "access_token": a} for f, a in self.uploaded_private_files]
+            }
+            with open(self.data_file, 'w') as f:
+                json.dump(data, f, indent=4)
+            logger.info("Saved persistent data to %s", self.data_file)
+        except Exception as e:
+            logger.error("Failed to save persistent data: %s", e)
+
+TestApp._view_archive_file = view.view_file
 
 if __name__ == "__main__":
     app = TestApp()

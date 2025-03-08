@@ -1,8 +1,30 @@
-# gui.py
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
 import platform
+
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+        self.widget.bind("<Enter>", self.show_tooltip)
+        self.widget.bind("<Leave>", self.hide_tooltip)
+
+    def show_tooltip(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        self.tooltip_window = tk.Toplevel(self.widget)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(self.tooltip_window, text=self.text, background="yellow", relief="solid", borderwidth=1)
+        label.pack()
+
+    def hide_tooltip(self, event=None):
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
 
 def add_context_menu(widget):
     menu = tk.Menu(widget, tearoff=0)
@@ -72,6 +94,14 @@ def setup_main_gui(app):
     public_checkbox.pack(anchor="w")
     private_checkbox = ttk.Checkbutton(actions_frame, text="Private (encrypted)", variable=app.is_private_var, command=toggle_private)
     private_checkbox.pack(anchor="w")
+    cost_calc_frame = ttk.Frame(actions_frame)
+    cost_calc_frame.pack(anchor="w", pady=(5, 0))
+    cost_calc_frame.grid_columnconfigure(1, weight=1)
+    cost_calc_checkbox = ttk.Checkbutton(cost_calc_frame, text="Perform Cost Calculation", variable=app.perform_cost_calc_var)
+    cost_calc_checkbox.grid(row=0, column=0, sticky="w")
+    info_icon = ttk.Label(cost_calc_frame, text="ℹ", foreground="grey", cursor="question_arrow")
+    info_icon.grid(row=0, column=1, padx=5, sticky="w")
+    ToolTip(info_icon, "Cost calculation is not available for queued data.")
     upload_btn = ttk.Button(actions_frame, text="Upload", command=app.upload_file, style="Accent.TButton")
     upload_btn.pack(fill=tk.X, pady=(10, 0))
 
@@ -127,9 +157,8 @@ def setup_main_gui(app):
     status_bar.pack(fill=tk.X, side=tk.BOTTOM)
     app.status_label = ttk.Label(status_bar, text="Ready", foreground="#666666")
     app.status_label.pack(side=tk.LEFT, padx=5)
-    ttk.Label(status_bar, text="v1.0.0", foreground="#666666").pack(side=tk.RIGHT, padx=5)
+    ttk.Label(status_bar, text="v1.1.0", foreground="#666666").pack(side=tk.RIGHT, padx=5)
 
-    # Allow resizing to enable window manager controls
     app.root.resizable(True, True)
 
 def show_help(app):
@@ -157,4 +186,3 @@ def show_help(app):
     add_context_menu(text)
 
     tk.Button(help_window, text="Close", command=help_window.destroy).pack(pady=5)
-

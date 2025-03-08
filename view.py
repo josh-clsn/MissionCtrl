@@ -15,7 +15,6 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 def detect_and_display_content(data, parent_frame, filename="data"):
     mime_type, _ = mimetypes.guess_type(filename)
     if mime_type is None:
-        # Fallback MIME type detection based on file signatures
         if data.startswith(b'\x89PNG'):
             mime_type = 'image/png'
         elif data.startswith(b'\xff\xd8'):
@@ -112,30 +111,24 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False)
                 logger.debug("File names: %s, Addresses: %s", file_names, chunk_addresses)
                 for name, addr in zip(file_names, chunk_addresses):
                     frame = ttk.Frame(content_frame)
-                    frame.pack(fill=tk.X, pady=2, padx=5)  # Added padx for spacing
+                    frame.pack(fill=tk.X, pady=2, padx=5)
                     ttk.Label(frame, text=f"- {name} (Address: {addr})").pack(side=tk.LEFT, padx=5)
                     
-                    # Loading label for each View button
                     loading_label = ttk.Label(frame, text="")
                     loading_label.pack(side=tk.RIGHT, padx=5)
                     
-                    # Create the button first
                     view_button = ttk.Button(frame, text="View")
-                    # Now assign the command using the already defined view_button
                     view_button.config(command=lambda a=addr, n=name, b=view_button, l=loading_label: view_file(app, a, n, b, l))
                     view_button.pack(side=tk.RIGHT, padx=5)
 
-    # Ensure content_frame is updated before adding buttons
     content_frame.update_idletasks()
 
     button_frame = ttk.Frame(view_window)
     button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
 
-    # Loading indicator for bottom buttons
     bottom_loading_label = ttk.Label(button_frame, text="")
     bottom_loading_label.pack(side=tk.LEFT, padx=5)
 
-    # State tracking for bottom buttons
     button_states = {"save": False, "save_all": False}
 
     def set_loading_state(button, state, message="", label=None):
@@ -254,7 +247,6 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False)
         save_all_button.pack(side=tk.LEFT, padx=5)
     ttk.Button(button_frame, text="Close", command=lambda: (logger.info("Closing window..."), view_window.destroy())).pack(side=tk.LEFT, padx=5)
 
-    # Ensure the window updates to show all elements
     view_window.update_idletasks()
 
 def view_file(app, addr, name, button, loading_label):
