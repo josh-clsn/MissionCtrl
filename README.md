@@ -4,53 +4,86 @@ Welcome to **Mission Ctrl**! This app lets you upload, download, and manage file
 
 Please note this App is a "learning project" and should be treated as such, only add small amounts of funds to your wallet and expect bugs.
 
----
+# Setting Up a Python Virtual Environment (venv) on Ubuntu/Linux
 
-## Step 1: Install Python
+## Prerequisites
+Ensure you have Python 3 and `pip` installed. Run the following command to install the necessary system packages:
 
-Mission Ctrl runs on Python, a free programming language. Here’s how to install it:
+```bash
+sudo apt update
+sudo apt install python3 python3-pip python3-venv python3-tk -y
+```
 
-1. Visit [python.org/downloads](https://www.python.org/downloads/).
-2. Download the latest version (e.g., Python 3.11).
-3. Run the installer:
-   - **Windows**: Check "Add Python to PATH" during installation.
-   - **Mac**: Follow the prompts; Python will install to `/usr/local/bin/`.
-   - **Linux**: Python is often pre-installed. If not, use your package manager (e.g., `sudo apt install python3` on Ubuntu).
-4. Open a terminal:
-   - **Windows**: Search for "Command Prompt" in the Start menu.
-   - **Mac**: Open "Terminal" from Applications > Utilities.
-   - **Linux**: Open your terminal app.
-5. Type `python --version` (or `python3 --version` on Mac/Linux). If you see a version number (e.g., `3.11.0`), Python is ready!
+### Why are these needed?
+- `python3` → Installs Python
+- `python3-pip` → Installs `pip` for package management
+- `python3-venv` → Enables virtual environment support
+- `python3-tk` → Ensures Tkinter (GUI support) is available
 
 ---
 
-## Step 2: Download Mission Ctrl
+## Step 1: Create a Virtual Environment
+Navigate to your project directory and create a virtual environment:
 
-1. Save the Mission Ctrl files to a folder on your computer:
-   - `ctrl.py`, `gui.py`, `wallet.py`, `public.py`, `private.py`, `get.py`, `view.py`
-   - **Tip**: Create a new folder like `C:\MissionCtrl` (Windows) or `~/MissionCtrl` (Mac/Linux) to keep things organized.
-2. Extract them if they’re in a ZIP file.
-
----
-
-## Step 3: Install Required Libraries
-
-Mission Ctrl needs some extra tools to work. Here’s how to install them:
-
-1. Open your terminal and navigate to your Mission Ctrl folder:
-   - **Windows**: `cd C:\MissionCtrl`
-   - **Mac/Linux**: `cd ~/MissionCtrl`
-2. Run this command: `   pip install web3 cryptography pillow autonomi-client`
+```bash
+cd /path/to/your/project
+python3 -m venv venv
+```
 
 ---
 
-## Step 4: Start The App
+## Step 2: Activate the Virtual Environment
+Run the following command to activate the virtual environment:
 
-- On Mac/Linux, `python3 ctrl.py`
-2. A warning window will appear:
-- Read it carefully—it warns about using small amounts of funds for safety.
-- Click "OK" to proceed (or "Cancel" to exit).
-3. The Mission Ctrl window should open!
+```bash
+source venv/bin/activate
+```
+
+After activation, your terminal prompt should show `(venv)`, indicating the environment is active.
+
+---
+
+## Step 3: Upgrade `pip`
+Ensure `pip` is up to date inside the virtual environment:
+
+```bash
+pip install -U pip
+```
+
+---
+
+## Step 4: Install Required Python Packages
+Run the following command to install the necessary dependencies:
+
+```bash
+pip install asyncio web3 autonomi-client cryptography pillow
+```
+
+> **Note:** Tkinter does **not** need to be installed with `pip` because it comes with Python but requires the system package `python3-tk` (installed in Step 1).
+
+---
+
+## Step 5: Verify Installations
+Test if all required packages are correctly installed:
+
+```bash
+python -c 'import tkinter; print("Tkinter is installed!")'
+python -c 'import web3; print("Web3 is installed!")'
+python -c 'import autonomi_client; print("Autonomi Client is installed!")'
+python -c 'import cryptography; print("Cryptography is installed!")'
+python -c 'import PIL; print("Pillow is installed!")'
+```
+
+If each command prints a success message, your environment is correctly set up.
+
+---
+
+## Step 6: Run the Application
+Now, start the project:
+
+```bash
+python ctrl.py
+```
 
 ---
 
