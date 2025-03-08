@@ -130,10 +130,10 @@ async def upload_private_directory(app, dir_path):
             timeout=15000
         )
         logger.info("dir_upload result: %s", result)
-        price, archive = result
+        price, archive = result 
         data_maps = archive.data_maps()
         if data_maps:
-            access_token = list(data_maps.values())[0].to_hex()
+            access_token = data_maps[0].to_hex() 
             dir_name = os.path.basename(dir_path)
             app.local_archives.append((access_token, dir_name, True))
             logger.info("Private directory uploaded, price: %s, access_token: %s", price, access_token)
