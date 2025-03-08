@@ -74,7 +74,7 @@ python -m venv venv
 ### **Step 2: Activate the Virtual Environment**
 For **Command Prompt (cmd)**:
 ```cmd
-venv\Scriptsctivate
+venv\Scripts\activate
 ```
 
 For **PowerShell**:
