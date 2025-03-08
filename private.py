@@ -114,7 +114,7 @@ async def upload_private_directory(app, dir_path):
             logger.info("Showing cost confirmation dialog")
             proceed = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: messagebox.askyesno("Confirm Upload", f"Estimated cost for directory: {estimated_cost} ANT. Proceed?")
+                lambda: messagebox.askyesno("Confirm Upload", f"Estimated cost: {estimated_cost} ANT. Proceed?")
             )
             if not proceed:
                 logger.info("Upload cancelled by user")
@@ -129,7 +129,7 @@ async def upload_private_directory(app, dir_path):
             app.client.dir_upload(dir_path, app.wallet),
             timeout=15000
         )
-        data_maps = archive.data_maps()
+        data_maps = archive.data_maps()  # Directly call data_maps() on the PrivateArchive object
         if data_maps:
             access_token = list(data_maps.values())[0].to_hex()
             dir_name = os.path.basename(dir_path)
