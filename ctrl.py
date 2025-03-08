@@ -18,7 +18,6 @@ logger = logging.getLogger("MissionCtrl")
 
 class TestApp:
     def __init__(self):
-        # Initialize attributes
         self.loop = None
         self.client = None
         self.wallet = None
@@ -42,7 +41,6 @@ class TestApp:
         self._current_operation = None
         self.is_processing = False
 
-        # Show warning before creating the root window
         if not messagebox.askokcancel(
             "Warning",
             "WARNING: Only send or import small amounts of funds. "
@@ -50,10 +48,9 @@ class TestApp:
         ):
             raise SystemExit("User declined the warning.")
 
-        # Create the root window and set up the event loop
         self.root = tk.Tk()
         self.root.title("Mission Ctrl")
-        self.root.withdraw()  # Hide initially
+        self.root.withdraw()
         self.is_public_var = tk.BooleanVar(master=self.root, value=False)
         self.is_private_var = tk.BooleanVar(master=self.root, value=False)
         self.perform_cost_calc_var = tk.BooleanVar(master=self.root, value=True)
@@ -126,7 +123,7 @@ class TestApp:
     def update_balances(self):
         if self.wallet:
             asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
-        self.root.after(120000, self.update_balances)
+        self.root.after(60000, self.update_balances)
 
     async def _update_balances(self):
         ant_balance = int(await self.wallet.balance())
@@ -159,7 +156,8 @@ class TestApp:
         choice_var = StringVar(value="files")
         ttk.Label(choice_window, text="Select upload type:").pack(pady=10)
         ttk.Radiobutton(choice_window, text="Files", variable=choice_var, value="files").pack(anchor="w", padx=20, pady=5)
-        ttk.Radiobutton(choice_window, text="Directory", variable=choice_var, value="directory").pack(anchor="w", padx=20, pady=5)
+        if public_selected:  
+            ttk.Radiobutton(choice_window, text="Directory", variable=choice_var, value="directory").pack(anchor="w", padx=20, pady=5)
 
         def on_ok():
             choice_window.destroy()
@@ -175,7 +173,7 @@ class TestApp:
                     self.status_label.config(text="Ready")
                     return
                 paths_to_upload = file_paths
-            else:
+            else: 
                 dir_path = filedialog.askdirectory(
                     title="Select Directory to Upload",
                     initialdir=initial_dir
@@ -186,23 +184,18 @@ class TestApp:
                 paths_to_upload = [dir_path]
 
             self.is_processing = True
-            self._current_operation = 'cost_calc' if self.perform_cost_calc_var.get() else 'upload'
+            self._current_operation = 'upload'
 
             for path in paths_to_upload:
-                if os.path.isdir(path):
-                    self.status_label.config(text=f"{'Getting upload cost quote, please wait...' if self.perform_cost_calc_var.get() else 'Uploading directory'} {os.path.basename(path)}")
-                    if public_selected:
-                        asyncio.run_coroutine_threadsafe(public.upload_public_directory(self, path), self.loop)
-                    elif private_selected:
-                        asyncio.run_coroutine_threadsafe(private.upload_private_directory(self, path), self.loop)
-                else:
-                    self.status_label.config(text=f"{'Getting upload cost quote, please wait...' if self.perform_cost_calc_var.get() else 'Uploading file'} {os.path.basename(path)}")
-                    if public_selected:
-                        asyncio.run_coroutine_threadsafe(public.upload_public(self, path), self.loop)
-                    elif private_selected:
-                        asyncio.run_coroutine_threadsafe(private.upload_private(self, path), self.loop)
+                self.status_label.config(text=f"Uploading {os.path.basename(path)}")
+                if os.path.isdir(path) and public_selected:
+                    asyncio.run_coroutine_threadsafe(public.upload_public_directory(self, path), self.loop)
+                elif public_selected:
+                    asyncio.run_coroutine_threadsafe(public.upload_public(self, path), self.loop)
+                elif private_selected:
+                    asyncio.run_coroutine_threadsafe(private.upload_private(self, path), self.loop)
 
-            self.is_processing = False 
+            self.is_processing = False
             self.stop_status_animation()
             self.status_label.config(text="Upload(s) scheduled")
 

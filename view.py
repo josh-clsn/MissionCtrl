@@ -89,11 +89,20 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     
-    # Create window and bind to update scroll region dynamically
     canvas.create_window((0, 0), window=content_frame, anchor="nw")
     content_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
-    if is_private:
+    if is_private and archive:
+        ttk.Label(content_frame, text="Retrieved Private Archive:", font=("Arial", 12, "bold")).pack(pady=5)
+        file_list = list(archive.files())  # List of (path, metadata) tuples
+        if not file_list:
+            ttk.Label(content_frame, text="No files found in archive.").pack()
+        else:
+            for path, metadata in file_list:
+                frame = ttk.Frame(content_frame)
+                frame.pack(fill=tk.X, pady=2, padx=5)
+                ttk.Label(frame, text=f"- {path} (Size: {metadata.size} bytes)").pack(side=tk.LEFT, padx=5)
+    elif is_private:
         ttk.Label(content_frame, text="Retrieved Private Data:", font=("Arial", 12, "bold")).pack(pady=5)
         detect_and_display_content(data, content_frame)
     else:
@@ -108,17 +117,11 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False)
             else:
                 chunk_addresses = list(archive.addresses()) if archive else []
                 file_names = [item[0] for item in file_list]
-                logger.debug("File names: %s, Addresses: %s", file_names, chunk_addresses)
                 for name, addr in zip(file_names, chunk_addresses):
                     frame = ttk.Frame(content_frame)
                     frame.pack(fill=tk.X, pady=2, padx=5)
                     ttk.Label(frame, text=f"- {name} (Address: {addr})").pack(side=tk.LEFT, padx=5)
-                    
-                    loading_label = ttk.Label(frame, text="")
-                    loading_label.pack(side=tk.RIGHT, padx=5)
-                    
-                    view_button = ttk.Button(frame, text="View")
-                    view_button.config(command=lambda a=addr, n=name, b=view_button, l=loading_label: view_file(app, a, n, b, l))
+                    view_button = ttk.Button(frame, text="View", command=lambda a=addr, n=name: view_file(app, a, n))
                     view_button.pack(side=tk.RIGHT, padx=5)
 
     content_frame.update_idletasks()
