@@ -26,7 +26,7 @@ sudo apt install python3 python3-pip python3-venv python3-tk -y
 Navigate to your project directory and create a virtual environment:
 
 ```bash
-cd /path/to/your/project
+cd /MissionCtrl
 python3 -m venv venv
 ```
 
