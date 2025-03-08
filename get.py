@@ -3,6 +3,7 @@ import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
 from autonomi_client import DataMapChunk
+import view
 
 logger = logging.getLogger("MissionCtrl")
 
