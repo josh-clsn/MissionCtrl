@@ -9,7 +9,7 @@ Please note this App is a "learning project" and should be treated as such. Only
 To get started, clone the repository:
 
 ```bash
-git clone git@github.com:josh-clsn/MissionCtrl.git
+git@github.com:josh-clsn/MissionCtrl.git
 cd MissionCtrl
 ```
 
