@@ -157,7 +157,7 @@ def setup_main_gui(app):
     status_bar.pack(fill=tk.X, side=tk.BOTTOM)
     app.status_label = ttk.Label(status_bar, text="Ready", foreground="#666666")
     app.status_label.pack(side=tk.LEFT, padx=5)
-    ttk.Label(status_bar, text="v1.2.0", foreground="#666666").pack(side=tk.RIGHT, padx=5)
+    ttk.Label(status_bar, text="v1.2.1", foreground="#666666").pack(side=tk.RIGHT, padx=5)
 
     app.root.resizable(True, True)
 

@@ -8,7 +8,13 @@ from autonomi_client import PaymentOption
 logger = logging.getLogger("MissionCtrl")
 
 async def upload_private(app, file_path, from_queue=False):
-    app.status_label.config(text=f"Uploading file: {os.path.basename(file_path)}")
+    app.status_label.config(
+        text=(
+            f"Getting quote... for {os.path.basename(file_path)}"
+            if app.perform_cost_calc_var.get() and not from_queue
+            else f"Uploading file: {os.path.basename(file_path)}"
+        )
+    )
     app.is_processing = True
     app.start_status_animation()
     try:
@@ -20,11 +26,54 @@ async def upload_private(app, file_path, from_queue=False):
             app.is_processing = False
             app.stop_status_animation()
             return
+        
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+        logger.info("File data type for %s: %s, length: %d", file_path, type(file_data), len(file_data))
+
+        if app.perform_cost_calc_var.get() and not from_queue:
+            logger.info("Calculating estimated cost for private file: %s", file_path)
+            app._current_operation = 'cost_calc'
+            try:
+                estimated_cost = await asyncio.wait_for(
+                    app.client.data_cost(file_data),
+                    timeout=1000
+                )
+                logger.info("Estimated cost: %s ANT", estimated_cost)
+            except asyncio.TimeoutError:
+                logger.error("Cost calculation timed out after 1000 seconds")
+                app.root.after(0, lambda: messagebox.showerror("Error", "Cost calculation timed out after 400 seconds. Check your network connection."))
+                app.is_processing = False
+                app.stop_status_animation()
+                return
+            app._current_operation = None
+            app.status_label.config(text=f"Quote retrieved: {estimated_cost} ANT for {os.path.basename(file_path)}")
+            app.stop_status_animation()
+
+            def show_confirmation():
+                nonlocal proceed
+                proceed = messagebox.askyesno("Confirm Upload", f"Estimated cost: {estimated_cost} ANT. Proceed?")
+                app.root.after(0, continue_upload)
+
+            proceed = False
+            app.root.after(0, show_confirmation)
+            while not proceed and app.is_processing:
+                await asyncio.sleep(0.1)
+            if not proceed:
+                logger.info("Upload cancelled by user")
+                app.is_processing = False
+                app.status_label.config(text="Upload cancelled")
+                return
+
         logger.info("Upload started for file: %s", file_path)
         app._current_operation = 'upload'
+        app.status_label.config(text=f"Uploading file: {os.path.basename(file_path)}")
+        app.start_status_animation()
+        
+        logger.info("Data type passed to data_put: %s", type(file_data))
         price, data_map_chunk = await asyncio.wait_for(
-            app.client.data_put(file_path, payment_option),
-            timeout=300
+            app.client.data_put(file_data, payment_option),
+            timeout=15000
         )
         access_token = data_map_chunk.to_hex()
         file_name = os.path.basename(file_path)
@@ -45,6 +94,10 @@ async def upload_private(app, file_path, from_queue=False):
         if not from_queue:
             app.is_processing = False
             app.stop_status_animation()
+
+def continue_upload():
+    global proceed
+    proceed = True
 
 def manage_private_files(app):
     manage_window = tk.Toplevel(app.root)

@@ -13,11 +13,35 @@ import wallet
 import view
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog, Toplevel
-
-logger = logging.getLogger("MissionCtrl")
+import platform
 
 class TestApp:
     def __init__(self):
+        # Initialize logger for this instance
+        self.logger = logging.getLogger("MissionCtrl")
+        self.logger.setLevel(logging.INFO)
+
+        # Create console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(console_formatter)
+        self.logger.addHandler(console_handler)
+
+        # Create file handler
+        if platform.system() == "Linux":
+            self.default_dir = Path(os.path.expanduser("~/.local/share/missionctrl"))
+        else:
+            self.default_dir = Path(os.path.expanduser("~/Documents/missionctrl"))
+        self.default_dir.mkdir(parents=True, exist_ok=True)
+        log_file = self.default_dir / "missionctrl.log"
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.INFO)
+        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(file_formatter)
+        self.logger.addHandler(file_handler)
+
+        # Initialize instance variables
         self.loop = None
         self.client = None
         self.wallet = None
@@ -25,13 +49,6 @@ class TestApp:
         self.uploaded_private_files = []
         self.local_archives = []
         self.w3 = Web3(Web3.HTTPProvider('https://arb1.arbitrum.io/rpc'))
-        import platform
-        from pathlib import Path
-        if platform.system() == "Linux":
-            self.default_dir = Path(os.path.expanduser("~/.local/share/missionctrl"))
-        else:
-            self.default_dir = Path(os.path.expanduser("~/Documents/missionctrl"))
-        self.default_dir.mkdir(parents=True, exist_ok=True)
         self.wallet_file = str(self.default_dir / "wallet.enc")
         self.data_file = str(self.default_dir / "mission_control_data.json")
         self.upload_queue = []
@@ -41,6 +58,7 @@ class TestApp:
         self._current_operation = None
         self.is_processing = False
 
+        # Show warning dialog
         if not messagebox.askokcancel(
             "Warning",
             "WARNING: Only send or import small amounts of funds. "
@@ -48,12 +66,13 @@ class TestApp:
         ):
             raise SystemExit("User declined the warning.")
 
+        # Initialize Tkinter root
         self.root = tk.Tk()
         self.root.title("Mission Ctrl")
         self.root.withdraw()
         self.is_public_var = tk.BooleanVar(master=self.root, value=False)
         self.is_private_var = tk.BooleanVar(master=self.root, value=False)
-        self.perform_cost_calc_var = tk.BooleanVar(master=self.root, value=False)  # Changed to False
+        self.perform_cost_calc_var = tk.BooleanVar(master=self.root, value=False)
         self.loop = asyncio.new_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
         self.initialize_app()
@@ -63,7 +82,7 @@ class TestApp:
         if self.loop:
             self.loop.call_soon_threadsafe(self.loop.stop)
         self.root.destroy()
-        logger.info("Closing window...")
+        self.logger.info("Closing window...")
 
     def initialize_app(self):
         self.load_persistent_data()
@@ -78,25 +97,25 @@ class TestApp:
     async def init_client(self):
         self.client = await Client.init()
         self.connection_label.config(text="Network: Initializing...")
-        logger.info("Client initialized: %s", self.client)
+        self.logger.info("Client initialized: %s", self.client)
         if os.path.exists(self.wallet_file):
             self.root.after(0, self._schedule_wallet_prompt)
         else:
             self.wallet_address_label.config(text="Wallet: Not Created")
-            logger.info("No wallet file found at %s", self.wallet_file)
+            self.logger.info("No wallet file found at %s", self.wallet_file)
         self.connection_label.config(text="Network: Connected to Autonomi")
 
     def _schedule_wallet_prompt(self):
-        logger.info("Scheduling wallet password prompt")
-        logger.info("Wallet file exists: %s", os.path.exists(self.wallet_file))
+        self.logger.info("Scheduling wallet password prompt")
+        self.logger.info("Wallet file exists: %s", os.path.exists(self.wallet_file))
         def on_wallet_loaded(success):
             if not success:
-                logger.info("No valid wallet loaded, prompting for wallet setup")
+                self.logger.info("No valid wallet loaded, prompting for wallet setup")
                 self.show_wallet_setup_wizard()
         wallet.show_wallet_password_prompt(self, on_wallet_loaded)
 
     def show_wallet_setup_wizard(self):
-        logger.info("Showing wallet setup wizard")
+        self.logger.info("Showing wallet setup wizard")
         wizard_window = Toplevel(self.root)
         wizard_window.title("Welcome to Mission Ctrl - Wallet Setup")
         wizard_window.geometry("400x300")
@@ -123,14 +142,14 @@ class TestApp:
     def update_balances(self):
         if self.wallet:
             asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
-        self.root.after(60000, self.update_balances)
+        self.root.after(300000, self.update_balances)  # 5 minutes interval
 
     async def _update_balances(self):
         ant_balance = int(await self.wallet.balance())
         eth_balance = self.w3.eth.get_balance(self.wallet.address())
         self.ant_balance_label.config(text=f"ANT Balance: {ant_balance / 10**18:.6f}")
         self.eth_balance_label.config(text=f"ETH Balance: {eth_balance / 10**18:.6f}")
-        logger.info("Balances updated - ANT: %s, ETH: %s", ant_balance / 10**18, eth_balance / 10**18)
+        self.logger.info("Balances updated - ANT: %s, ETH: %s", ant_balance / 10**18, eth_balance / 10**18)
 
     def upload_file(self):
         from tkinter import filedialog, messagebox, Toplevel, ttk, StringVar
@@ -168,7 +187,7 @@ class TestApp:
             choice_var = StringVar(value="files")
             ttk.Label(choice_window, text="Select upload type:").pack(pady=10)
             ttk.Radiobutton(choice_window, text="Files", variable=choice_var, value="files").pack(anchor="w", padx=20, pady=5)
-            if public_selected:  
+            if public_selected:
                 ttk.Radiobutton(choice_window, text="Directory", variable=choice_var, value="directory").pack(anchor="w", padx=20, pady=5)
 
             def on_ok():
@@ -184,7 +203,7 @@ class TestApp:
                         self.status_label.config(text="Ready")
                         return
                     paths_to_upload = file_paths
-                else: 
+                else:
                     dir_path = filedialog.askdirectory(
                         title="Select Directory to Upload",
                         initialdir=initial_dir
@@ -229,9 +248,6 @@ class TestApp:
         self.is_processing = False
         self.stop_status_animation()
         self.status_label.config(text="Upload(s) scheduled")
-
-        ttk.Button(choice_window, text="OK", command=on_ok).pack(pady=10)
-        choice_window.protocol("WM_DELETE_WINDOW", lambda: [choice_window.destroy(), self.status_label.config(text="Ready")])
 
     def add_to_upload_queue(self):
         from tkinter import filedialog, messagebox
@@ -389,9 +405,9 @@ class TestApp:
                 self.local_archives = [(item["addr"], item["nickname"], item["is_private"]) for item in data.get("local_archives", [])]
                 self.upload_queue = [(item["type"], item["path"]) for item in data.get("upload_queue", [])]
                 self.uploaded_private_files = [(item["filename"], item["access_token"]) for item in data.get("uploaded_private_files", [])]
-                logger.info("Loaded persistent data from %s", self.data_file)
+                self.logger.info("Loaded persistent data from %s", self.data_file)
         except Exception as e:
-            logger.error("Failed to load persistent data: %s", e)
+            self.logger.error("Failed to load persistent data: %s", e)
             self.uploaded_files = []
             self.local_archives = []
             self.upload_queue = []
@@ -407,9 +423,9 @@ class TestApp:
             }
             with open(self.data_file, 'w') as f:
                 json.dump(data, f, indent=4)
-            logger.info("Saved persistent data to %s", self.data_file)
+            self.logger.info("Saved persistent data to %s", self.data_file)
         except Exception as e:
-            logger.error("Failed to save persistent data: %s", e)
+            self.logger.error("Failed to save persistent data: %s", e)
 
 TestApp._view_archive_file = view.view_file
 

@@ -10,8 +10,6 @@ import subprocess
 from pathlib import Path
 
 logger = logging.getLogger("MissionCtrl")
-logger.setLevel(logging.DEBUG)
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 def get_downloads_folder():
     """Get the user's Downloads folder in a cross-platform way."""

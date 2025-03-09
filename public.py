@@ -35,12 +35,12 @@ async def upload_public(app, file_path, from_queue=False):
             try:
                 estimated_cost = await asyncio.wait_for(
                     app.client.data_cost(file_data),
-                    timeout=400
+                    timeout=1000
                 )
                 logger.info("Estimated cost: %s ANT", estimated_cost)
             except asyncio.TimeoutError:
-                logger.error("Cost calculation timed out after 400 seconds")
-                app.root.after(0, lambda: messagebox.showerror("Error", "Cost calculation timed out after 400 seconds. Check your network connection."))
+                logger.error("Cost calculation timed out after 1000 seconds")
+                app.root.after(0, lambda: messagebox.showerror("Error", "Cost calculation timed out after 1000 seconds. Check your network connection."))
                 app.is_processing = False
                 app.stop_status_animation()
                 return
@@ -156,12 +156,12 @@ async def upload_public_directory(app, dir_path):
             try:
                 estimated_cost = await asyncio.wait_for(
                     app.client.file_cost(dir_path),
-                    timeout=300
+                    timeout=15000
                 )
                 logger.info("Estimated cost: %s ANT", estimated_cost)
             except asyncio.TimeoutError:
-                logger.error("Cost calculation timed out after 300 seconds")
-                app.root.after(0, lambda: messagebox.showerror("Error", "Cost calculation timed out after 300 seconds. Try a smaller directory or check your network."))
+                logger.error("Cost calculation timed out after 15000 seconds")
+                app.root.after(0, lambda: messagebox.showerror("Error", "Cost calculation timed out after 15000 seconds. Try a smaller directory or check your network."))
                 app.is_processing = False
                 app.stop_status_animation()
                 return
