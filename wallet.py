@@ -294,9 +294,10 @@ def send_funds(app, wallet_window=None):
                 wallet_window.destroy()
             app.status_label.config(text=f"Sent {currency}")
         except Exception as e:
+            import traceback
             error_msg = str(e)
-            logger.error(f"Send {currency} failed: {error_msg}")
-            app.root.after(0, lambda msg=error_msg: messagebox.showerror("Error", f"Send failed: {msg}\nCheck your {currency} balance in the Wallet tab."))
+            logger.error(f"Send {currency} failed: {error_msg}\n{traceback.format_exc()}")
+            app.root.after(0, lambda msg=error_msg: messagebox.showerror("Error", f"Send failed: {msg}\nDetails: {traceback.format_exc()}"))
         finally:
             if 'private_key' in locals():
                 private_key = bytearray(private_key.encode())
@@ -304,6 +305,8 @@ def send_funds(app, wallet_window=None):
                     private_key[i] = 0
             app.is_processing = False
             app.stop_status_animation()
+
+    tk.Button(send_window, text="Send", command=lambda: asyncio.run_coroutine_threadsafe(do_send(), app.loop)).pack(pady=5)
 
 def _prompt_password(app, message):
     password_window = tk.Toplevel(app.root)

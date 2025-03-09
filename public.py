@@ -74,8 +74,9 @@ async def upload_public(app, file_path, from_queue=False):
         app.root.after(0, lambda: messagebox.showerror("Error", "Upload timed out after 15000 seconds. Check your network connection."))
         app.status_label.config(text="Upload timeout")
     except Exception as e:
-        logger.error("Upload error: %s", e)
-        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nNothing insightful to report sorry. ."))
+        import traceback
+        logger.error("Upload error: %s\n%s", e, traceback.format_exc())
+        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nDetails: {traceback.format_exc()}"))
         app.status_label.config(text="Upload failed")
     finally:
         if not from_queue:
@@ -195,8 +196,9 @@ async def upload_public_directory(app, dir_path):
         app.root.after(0, lambda: messagebox.showerror("Error", "Upload timed out after 15000 seconds. Check your network connection."))
         app.status_label.config(text="Upload timeout")
     except Exception as e:
-        logger.error("Upload error: %s", e)
-        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nNothing insightful to report sorry. ."))
+        import traceback
+        logger.error("Upload error: %s\n%s", e, traceback.format_exc())
+        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nDetails: {traceback.format_exc()}"))
         app.status_label.config(text="Upload failed")
     finally:
         app.is_processing = False
@@ -387,9 +389,10 @@ def manage_public_files(app):
                 logger.error("Archive operation timed out after 1200 seconds")
                 app.root.after(0, lambda: messagebox.showerror("Error", "Archive operation timed out. Check your network connection."))
             except Exception as error:
-                logger.error("Archiving error: %s", error)
+                import traceback
+                logger.error("Archiving error: %s\n%s", error, traceback.format_exc())
                 error_msg = str(error)
-                app.root.after(0, lambda: messagebox.showerror("Error", f"Archiving failed: {error_msg}\nCheck your ANT balance and network."))
+                app.root.after(0, lambda: messagebox.showerror("Error", f"Archiving failed: {error_msg}\nDetails: {traceback.format_exc()}"))
             finally:
                 app.is_processing = False
                 app.stop_status_animation()
@@ -472,9 +475,10 @@ def manage_public_files(app):
                 logger.error("Append operation timed out after 1200 seconds")
                 app.root.after(0, lambda: messagebox.showerror("Error", "Append operation timed out. Check your network connection."))
             except Exception as error:
-                logger.error("Appending error: %s", error)
+                import traceback
+                logger.error("Appending error: %s\n%s", error, traceback.format_exc())
                 error_msg = str(error)
-                app.root.after(0, lambda: messagebox.showerror("Error", f"Appending failed: {error_msg}\nCheck your ANT balance and network."))
+                app.root.after(0, lambda: messagebox.showerror("Error", f"Appending failed: {error_msg}\nDetails: {traceback.format_exc()}"))
             finally:
                 app.is_processing = False
                 app.stop_status_animation()

@@ -17,15 +17,18 @@ import platform
 
 class TestApp:
     def __init__(self):
+        # Initialize logger for this instance
         self.logger = logging.getLogger("MissionCtrl")
         self.logger.setLevel(logging.INFO)
 
+        # Create console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
         console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         console_handler.setFormatter(console_formatter)
         self.logger.addHandler(console_handler)
 
+        # Create file handler
         if platform.system() == "Linux":
             self.default_dir = Path(os.path.expanduser("~/.local/share/missionctrl"))
         else:
@@ -38,6 +41,7 @@ class TestApp:
         file_handler.setFormatter(file_formatter)
         self.logger.addHandler(file_handler)
 
+        # Initialize instance variables
         self.loop = None
         self.client = None
         self.wallet = None
@@ -54,6 +58,7 @@ class TestApp:
         self._current_operation = None
         self.is_processing = False
 
+        # Show warning dialog
         if not messagebox.askokcancel(
             "Warning",
             "WARNING: Only send or import small amounts of funds. "
@@ -61,6 +66,7 @@ class TestApp:
         ):
             raise SystemExit("User declined the warning.")
 
+        # Initialize Tkinter root
         self.root = tk.Tk()
         self.root.title("Mission Ctrl")
         self.root.withdraw()
@@ -136,7 +142,7 @@ class TestApp:
     def update_balances(self):
         if self.wallet:
             asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
-        self.root.after(300000, self.update_balances)
+        self.root.after(300000, self.update_balances)  # 5 minutes interval
 
     async def _update_balances(self):
         ant_balance = int(await self.wallet.balance())

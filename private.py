@@ -87,8 +87,9 @@ async def upload_private(app, file_path, from_queue=False):
         app.root.after(0, lambda: messagebox.showerror("Error", "Upload timed out after 300 seconds. Check your network connection."))
         app.status_label.config(text="Upload timeout")
     except Exception as e:
-        logger.error("Upload error: %s", e)
-        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nCheck your ANT balance in the Wallet tab."))
+        import traceback
+        logger.error("Upload error: %s\n%s", e, traceback.format_exc())
+        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nDetails: {traceback.format_exc()}"))
         app.status_label.config(text="Upload failed")
     finally:
         if not from_queue:

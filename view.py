@@ -14,7 +14,8 @@ logger = logging.getLogger("MissionCtrl")
 def get_downloads_folder():
     """Get the user's Downloads folder in a cross-platform way."""
     try:
-        if os.name != "nt": 
+        # On Linux, try using xdg-user-dir to get the Downloads folder
+        if os.name != "nt":  # Not Windows
             result = subprocess.run(
                 ["xdg-user-dir", "DOWNLOAD"],
                 capture_output=True,
@@ -25,8 +26,9 @@ def get_downloads_folder():
             if downloads_path and os.path.isdir(downloads_path):
                 return downloads_path
     except (subprocess.CalledProcessError, FileNotFoundError):
-        pass 
+        pass  # Fallback if xdg-user-dir fails or isn't available
 
+    # Fallback: Use ~/Downloads
     return str(Path.home() / "Downloads")
 
 def detect_and_display_content(data, parent_frame, filename="data"):
@@ -178,8 +180,9 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                         f.write(data)
                     messagebox.showinfo("Success", f"Data saved to {save_path}")
                 except Exception as ex:
-                    logger.error("Failed to save data: %s", ex)
-                    messagebox.showerror("Error", f"Failed to save data: {ex}")
+                    import traceback
+                    logger.error("Failed to save file: %s\n%s", ex, traceback.format_exc())
+                    messagebox.showerror("Error", f"Failed to save file: {ex}\nDetails: {traceback.format_exc()}")
         else:
             file_menu = tk.Menu(view_window, tearoff=0)
             file_names = [item[0] for item in archive.files()]
@@ -216,8 +219,9 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                         f.write(file_data)
                     messagebox.showinfo("Success", f"File saved to {save_path}")
             except Exception as ex:
-                logger.error("Failed to save file: %s", ex)
-                messagebox.showerror("Error", f"Failed to save file: {ex}")
+                import traceback
+                logger.error("Failed to save file: %s\n%s", ex, traceback.format_exc())
+                messagebox.showerror("Error", f"Failed to save file: {ex}\nDetails: {traceback.format_exc()}")
             finally:
                 button_states["save"] = False
                 set_loading_state(save_button, False, "", bottom_loading_label)
@@ -257,8 +261,9 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                         
                         messagebox.showinfo("Success", f"All {len(file_names)} files saved to {save_path}")
                 except Exception as ex:
-                    logger.error("Failed to download directory or save files: %s", ex)
-                    messagebox.showerror("Error", f"Failed to download directory or save files: {ex}")
+                    import traceback
+                    logger.error("Failed to download directory or save files: %s\n%s", ex, traceback.format_exc())
+                    messagebox.showerror("Error", f"Failed to download directory or save files: {ex}\nDetails: {traceback.format_exc()}")
                 finally:
                     button_states["save_all"] = False
                     set_loading_state(save_all_button, False, "", bottom_loading_label)
@@ -296,8 +301,9 @@ def view_file(app, addr, name, button, loading_label):
             detect_and_display_content(file_data, sub_frame, name)
             ttk.Button(sub_window, text="Close", command=sub_window.destroy).pack(pady=5)
         except Exception as e:
-            logger.error("Failed to view %s: %s", name, e)
-            messagebox.showerror("Error", f"Failed to view {name}: {e}")
+            import traceback
+            logger.error("Failed to view %s: %s\n%s", name, e, traceback.format_exc())
+            messagebox.showerror("Error", f"Failed to view {name}: {e}\nDetails: {traceback.format_exc()}")
         finally:
             button.is_busy = False
             button.config(state=tk.NORMAL)
