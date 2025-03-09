@@ -8,6 +8,7 @@ from autonomi_client import PaymentOption
 logger = logging.getLogger("MissionCtrl")
 
 async def upload_private(app, file_path, from_queue=False):
+    # Private file upload with optional cost calculation
     app.status_label.config(
         text=(
             f"Getting quote... for {os.path.basename(file_path)}"
@@ -18,7 +19,6 @@ async def upload_private(app, file_path, from_queue=False):
     app.is_processing = True
     app.start_status_animation()
     try:
-        from autonomi_client import PaymentOption
         payment_option = PaymentOption.wallet(app.wallet)
         ant_balance = int(await app.wallet.balance())
         if ant_balance <= 0:
@@ -101,6 +101,7 @@ def continue_upload():
     proceed = True
 
 def manage_private_files(app):
+    # UI for managing private files
     manage_window = tk.Toplevel(app.root)
     manage_window.title("Store Private Data Files - Mission Ctrl")
     manage_window.geometry("600x700")

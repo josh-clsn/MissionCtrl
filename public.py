@@ -9,6 +9,7 @@ from autonomi_client import PublicArchive, Metadata
 logger = logging.getLogger("MissionCtrl")
 
 async def upload_public(app, file_path, from_queue=False):
+    # Public file upload with optional cost calculation
     app.status_label.config(
         text=(
             f"Getting quote... for {os.path.basename(file_path)}"
@@ -84,6 +85,7 @@ async def upload_public(app, file_path, from_queue=False):
             app.stop_status_animation()
 
 async def upload_public_directory(app, dir_path):
+    # Public directory upload with stats and confirmation
     app.status_label.config(text=f"Gathering stats for {os.path.basename(dir_path)}...")
     app.is_processing = True
     app.start_status_animation()
@@ -205,6 +207,7 @@ async def upload_public_directory(app, dir_path):
         app.stop_status_animation()
 
 def manage_public_files(app):
+    # UI for managing public files and archives
     manage_window = tk.Toplevel(app.root)
     manage_window.title("Manage Public Files - Mission Ctrl")
     manage_window.geometry("600x700")

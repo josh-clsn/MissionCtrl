@@ -8,13 +8,13 @@ import view
 logger = logging.getLogger("MissionCtrl")
 
 async def _retrieve(app, address_input):
+    # Attempt retrieval with fallback logic
     try:
         data = None
         is_private = False
         is_single_chunk = False
         archive = None
 
-        # Try as a private data map
         try:
             data_map_chunk = DataMapChunk.from_hex(address_input)
             data = await app.client.data_get(data_map_chunk)
@@ -22,13 +22,11 @@ async def _retrieve(app, address_input):
             logger.info("Successfully retrieved private data")
         except Exception as private_error:
             logger.info("Not a private data map: %s", private_error)
-            # Try as a public archive
             try:
                 archive = await app.client.archive_get_public(address_input)
                 logger.info("Successfully retrieved public archive")
             except Exception as archive_error:
                 logger.info("Not a public archive: %s", archive_error)
-                # Fallback to single public chunk
                 try:
                     data = await app.client.data_get_public(address_input)
                     is_single_chunk = True

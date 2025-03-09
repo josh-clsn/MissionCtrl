@@ -17,31 +17,26 @@ import platform
 
 class TestApp:
     def __init__(self):
-        # Initialize logger for this instance
+        # Logger setup with console and file handlers
         self.logger = logging.getLogger("MissionCtrl")
         self.logger.setLevel(logging.INFO)
-
-        # Create console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
-        console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(console_formatter)
+        console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(console_handler)
-
-        # Create file handler
+        
+        # Platform-specific log file location
         if platform.system() == "Linux":
             self.default_dir = Path(os.path.expanduser("~/.local/share/missionctrl"))
         else:
             self.default_dir = Path(os.path.expanduser("~/Documents/missionctrl"))
         self.default_dir.mkdir(parents=True, exist_ok=True)
-        log_file = self.default_dir / "missionctrl.log"
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.FileHandler(self.default_dir / "missionctrl.log")
         file_handler.setLevel(logging.INFO)
-        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(file_formatter)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(file_handler)
 
-        # Initialize instance variables
+        # Core instance variables
         self.loop = None
         self.client = None
         self.wallet = None
@@ -58,7 +53,7 @@ class TestApp:
         self._current_operation = None
         self.is_processing = False
 
-        # Show warning dialog
+        # Initial user consent for fund risk
         if not messagebox.askokcancel(
             "Warning",
             "WARNING: Only send or import small amounts of funds. "
@@ -66,7 +61,7 @@ class TestApp:
         ):
             raise SystemExit("User declined the warning.")
 
-        # Initialize Tkinter root
+        # Tkinter root setup
         self.root = tk.Tk()
         self.root.title("Mission Ctrl")
         self.root.withdraw()
@@ -95,6 +90,7 @@ class TestApp:
         self.root.deiconify()
 
     async def init_client(self):
+        # Async client initialization
         self.client = await Client.init()
         self.connection_label.config(text="Network: Initializing...")
         self.logger.info("Client initialized: %s", self.client)
@@ -115,6 +111,7 @@ class TestApp:
         wallet.show_wallet_password_prompt(self, on_wallet_loaded)
 
     def show_wallet_setup_wizard(self):
+        # Wallet setup UI for new users
         self.logger.info("Showing wallet setup wizard")
         wizard_window = Toplevel(self.root)
         wizard_window.title("Welcome to Mission Ctrl - Wallet Setup")
@@ -133,6 +130,7 @@ class TestApp:
         tk.Button(wizard_window, text="Learn More", command=lambda: gui.show_help(self)).pack(pady=5)
 
     def check_client_connection(self):
+        # Periodic network status check
         if self.client:
             self.connection_label.config(text="Network: Connected to Autonomi")
         else:
@@ -142,9 +140,10 @@ class TestApp:
     def update_balances(self):
         if self.wallet:
             asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
-        self.root.after(300000, self.update_balances)  # 5 minutes interval
+        self.root.after(300000, self.update_balances)  # 5 minutes
 
     async def _update_balances(self):
+        # Async balance fetch from blockchain
         ant_balance = int(await self.wallet.balance())
         eth_balance = self.w3.eth.get_balance(self.wallet.address())
         self.ant_balance_label.config(text=f"ANT Balance: {ant_balance / 10**18:.6f}")
@@ -152,6 +151,7 @@ class TestApp:
         self.logger.info("Balances updated - ANT: %s, ETH: %s", ant_balance / 10**18, eth_balance / 10**18)
 
     def upload_file(self):
+        # File upload logic with public/private options
         from tkinter import filedialog, messagebox, Toplevel, ttk, StringVar
         self.status_label.config(text="Checking upload options...")
         public_selected = self.is_public_var.get()
@@ -290,6 +290,7 @@ class TestApp:
                 asyncio.run_coroutine_threadsafe(self.process_upload_queue(), self.loop)
 
     async def process_upload_queue(self):
+        # Async queue processing
         total_files = len(self.upload_queue)
         while self.upload_queue and getattr(self, "is_processing", False):
             upload_type, file_path = self.upload_queue[0]
@@ -397,6 +398,7 @@ class TestApp:
         self.status_label.config(text="Upload successful")
 
     def load_persistent_data(self):
+        # Load persisted app state
         try:
             if os.path.exists(self.data_file):
                 with open(self.data_file, 'r') as f:
@@ -414,6 +416,7 @@ class TestApp:
             self.uploaded_private_files = []
 
     def save_persistent_data(self):
+        # Save app state to JSON
         try:
             data = {
                 "uploaded_files": [{"filename": f, "chunk_addr": a} for f, a in self.uploaded_files],

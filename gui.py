@@ -27,6 +27,7 @@ class ToolTip:
             self.tooltip_window = None
 
 def add_context_menu(widget):
+    # Right-click context menu for cut/copy/paste
     menu = tk.Menu(widget, tearoff=0)
     menu.add_command(label="Cut", command=lambda: widget.event_generate("<<Cut>>"))
     menu.add_command(label="Copy", command=lambda: widget.event_generate("<<Copy>>"))
@@ -34,6 +35,7 @@ def add_context_menu(widget):
     widget.bind("<Button-3>", lambda event: menu.tk_popup(event.x_root, event.y_root))
 
 def setup_main_gui(app):
+    # Main GUI configuration with ttk styling
     style = ttk.Style()
     style.configure("TButton", padding=6, font=("Arial", 10))
     style.map("TButton", background=[("active", "#d3d3d3")])

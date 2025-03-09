@@ -12,10 +12,9 @@ from pathlib import Path
 logger = logging.getLogger("MissionCtrl")
 
 def get_downloads_folder():
-    """Get the user's Downloads folder in a cross-platform way."""
+    """Cross-platform retrieval of Downloads folder."""
     try:
-        # On Linux, try using xdg-user-dir to get the Downloads folder
-        if os.name != "nt":  # Not Windows
+        if os.name != "nt":  # Non-Windows systems
             result = subprocess.run(
                 ["xdg-user-dir", "DOWNLOAD"],
                 capture_output=True,
@@ -26,14 +25,14 @@ def get_downloads_folder():
             if downloads_path and os.path.isdir(downloads_path):
                 return downloads_path
     except (subprocess.CalledProcessError, FileNotFoundError):
-        pass  # Fallback if xdg-user-dir fails or isn't available
-
-    # Fallback: Use ~/Downloads
+        pass  # Fallback if xdg-user-dir fails
     return str(Path.home() / "Downloads")
 
 def detect_and_display_content(data, parent_frame, filename="data"):
+    """Detects content type and renders preview in UI."""
     mime_type, _ = mimetypes.guess_type(filename)
     if mime_type is None:
+        # Manual MIME detection for common formats
         if data.startswith(b'\x89PNG'):
             mime_type = 'image/png'
         elif data.startswith(b'\xff\xd8'):
@@ -64,10 +63,10 @@ def detect_and_display_content(data, parent_frame, filename="data"):
     if mime_type.startswith('image/'):
         try:
             img = Image.open(io.BytesIO(data))
-            img.thumbnail((600, 600)) 
+            img.thumbnail((600, 600))  # Resize for preview
             photo = ImageTk.PhotoImage(img)
             label = ttk.Label(parent_frame, image=photo)
-            label.image = photo
+            label.image = photo  # Keep reference to avoid GC
             label.pack(pady=5)
             ttk.Label(parent_frame, text=f"{mime_type.split('/')[1].upper()} Image").pack()
         except Exception as e:
@@ -90,6 +89,7 @@ def detect_and_display_content(data, parent_frame, filename="data"):
         ttk.Label(parent_frame, text=f"Detected type: {mime_type} | Size: {len(data)} bytes").pack()
 
 def show_data_window(app, data, is_private, archive=None, is_single_chunk=False, address_input=None):
+    """Displays retrieved data or archive contents in a scrollable window."""
     view_window = tk.Toplevel(app.root)
     view_window.title("Retrieved Data - Mission Ctrl")
     view_window.geometry("800x600")
@@ -169,7 +169,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
         if is_private or is_single_chunk:
             save_path = filedialog.asksaveasfilename(
                 parent=view_window,
-                initialdir=get_downloads_folder(),  # Changed to Downloads folder
+                initialdir=get_downloads_folder(),
                 defaultextension=".bin",
                 filetypes=[("All files", "*.*")],
                 title="Save Retrieved Data"
@@ -209,7 +209,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                 save_path = filedialog.asksaveasfilename(
                     parent=view_window,
                     initialfile=name,
-                    initialdir=get_downloads_folder(),  # Changed to Downloads folder
+                    initialdir=get_downloads_folder(),
                     defaultextension=".bin",
                     filetypes=[("All files", "*.*")],
                     title=f"Save {name}"
@@ -235,7 +235,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
 
         save_path = filedialog.askdirectory(
             parent=view_window,
-            initialdir=get_downloads_folder(),  # Changed to Downloads folder
+            initialdir=get_downloads_folder(),
             title="Select Directory to Save All Files"
         )
         if save_path:
@@ -280,6 +280,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     view_window.update_idletasks()
 
 def view_file(app, addr, name, button, loading_label):
+    """Async retrieval and display of a single public file."""
     if not hasattr(button, "is_busy"):
         button.is_busy = False
     
