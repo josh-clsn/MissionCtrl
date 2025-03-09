@@ -14,8 +14,7 @@ logger = logging.getLogger("MissionCtrl")
 def get_downloads_folder():
     """Get the user's Downloads folder in a cross-platform way."""
     try:
-        # On Linux, try using xdg-user-dir to get the Downloads folder
-        if os.name != "nt":  # Not Windows
+        if os.name != "nt": 
             result = subprocess.run(
                 ["xdg-user-dir", "DOWNLOAD"],
                 capture_output=True,
@@ -26,9 +25,8 @@ def get_downloads_folder():
             if downloads_path and os.path.isdir(downloads_path):
                 return downloads_path
     except (subprocess.CalledProcessError, FileNotFoundError):
-        pass  # Fallback if xdg-user-dir fails or isn't available
+        pass 
 
-    # Fallback: Use ~/Downloads
     return str(Path.home() / "Downloads")
 
 def detect_and_display_content(data, parent_frame, filename="data"):
