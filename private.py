@@ -1,40 +1,41 @@
-# private.py
-import os
 import asyncio
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+import os
 import logging
-from autonomi_client import Metadata
+import tkinter as tk
+from tkinter import ttk, messagebox
+from autonomi_client import PaymentOption
 
 logger = logging.getLogger("MissionCtrl")
 
 async def upload_private(app, file_path, from_queue=False):
-    logger.info("Upload Private started for %s", file_path)
-    app._current_operation = 'upload'
     app.status_label.config(text=f"Uploading file: {os.path.basename(file_path)}")
+    app.is_processing = True
+    app.start_status_animation()
     try:
-        with open(file_path, "rb") as f:
-            file_data = f.read()
         from autonomi_client import PaymentOption
         payment_option = PaymentOption.wallet(app.wallet)
         ant_balance = int(await app.wallet.balance())
-        if ant_balance > 0:
-            result = await asyncio.wait_for(
-                app.client.data_put(file_data, payment_option),
-                timeout=15000
-            )
-            price, data_map_chunk = result
-            access_token = data_map_chunk.to_hex()
-            file_name = os.path.basename(file_path)
-            app.local_archives.append((access_token, file_name, True))
-            logger.info(f"Private data uploaded, price: {price}, access_token: {access_token}")
-            app.root.after(0, lambda: app._show_upload_success(access_token, file_name, True))
-        else:
+        if ant_balance <= 0:
             app.root.after(0, lambda: messagebox.showerror("Error", "Insufficient ANT for upload. Add ANT to your wallet in the Wallet tab."))
             app.is_processing = False
             app.stop_status_animation()
+            return
+        logger.info("Upload started for file: %s", file_path)
+        app._current_operation = 'upload'
+        price, data_map_chunk = await asyncio.wait_for(
+            app.client.data_put(file_path, payment_option),
+            timeout=300
+        )
+        access_token = data_map_chunk.to_hex()
+        file_name = os.path.basename(file_path)
+        app.uploaded_private_files.append((file_name, access_token))
+        app.save_persistent_data()
+        logger.info("Private data uploaded, price: %s ANT, access_token: %s", price, access_token)
+        if not from_queue:
+            app.root.after(0, lambda: app._show_upload_success(access_token, file_name, True))
     except asyncio.TimeoutError:
-        app.root.after(0, lambda: messagebox.showerror("Error", "Upload timed out after 1200 seconds. Check your network connection."))
+        logger.error("Upload timed out after 300 seconds")
+        app.root.after(0, lambda: messagebox.showerror("Error", "Upload timed out after 300 seconds. Check your network connection."))
         app.status_label.config(text="Upload timeout")
     except Exception as e:
         logger.error("Upload error: %s", e)
@@ -65,7 +66,7 @@ def manage_private_files(app):
 
     search_entry.bind("<KeyRelease>", lambda e: filter_files())
 
-    files_frame = ttk.LabelFrame(manage_window, text="Private Data Files", padding=5)
+    files_frame = ttk.LabelFrame(manage_window, text="Private Files", padding=5)
     files_frame.pack(fill=tk.BOTH, padx=10, pady=5, expand=True)
 
     files_canvas = tk.Canvas(files_frame)
@@ -82,22 +83,22 @@ def manage_private_files(app):
     def refresh_content(query=""):
         for widget in files_inner_frame.winfo_children():
             widget.destroy()
-
         check_vars.clear()
-        private_files = [(addr, name) for addr, name, is_private in app.local_archives if is_private]
-        for addr, nickname in private_files:
-            if query in nickname.lower() or query in addr.lower():
+
+        private_items = [(filename, access_token, "File") for filename, access_token in app.uploaded_private_files]
+
+        for name, access_token, item_type in private_items:
+            if query in name.lower() or query in access_token.lower():
                 var = tk.BooleanVar(value=False)
-                check_vars.append((var, addr, nickname))
+                check_vars.append((var, access_token, name))
                 frame = ttk.Frame(files_inner_frame)
                 frame.pack(anchor="w", padx=5, pady=2)
-                chk = ttk.Checkbutton(frame, text=f"{nickname} - ", variable=var)
+                chk = ttk.Checkbutton(frame, text=f"{name} ({item_type}) - ")
                 chk.pack(side=tk.LEFT)
                 addr_entry = ttk.Entry(frame, width=80)
-                addr_entry.insert(0, addr)
+                addr_entry.insert(0, access_token)
                 addr_entry.config(state="readonly")
                 addr_entry.pack(side=tk.LEFT)
-                from gui import add_context_menu
                 add_context_menu(addr_entry)
 
         files_inner_frame.update_idletasks()
@@ -110,18 +111,16 @@ def manage_private_files(app):
     buttons_frame.pack(fill=tk.X, pady=10)
 
     def remove_selected():
-        selected_files = [(addr, nickname) for var, addr, nickname in check_vars if var.get()]
-        if not selected_files:
-            messagebox.showwarning("Selection Error", "Please select at least one file to remove.")
+        selected_items = [(access_token, name) for var, access_token, name in check_vars if var.get()]
+        if not selected_items:
+            messagebox.showwarning("Selection Error", "Please select at least one item to remove.")
             return
-        if messagebox.askyesno("Confirm Removal", f"Remove {len(selected_files)} private files from the list? This won’t delete the data from the network."):
-            for addr, nickname in selected_files:
-                for i, (a, n, is_private) in enumerate(app.local_archives):
-                    if a == addr and n == nickname and is_private:
-                        app.local_archives.pop(i)
-                        break
-            manage_window.destroy()
+        if messagebox.askyesno("Confirm Removal", f"Remove {len(selected_items)} private items from the list? This won’t delete the data from the network."):
+            for access_token, name in selected_items:
+                if (name, access_token) in app.uploaded_private_files:
+                    app.uploaded_private_files.remove((name, access_token))
+            app.save_persistent_data()
+            refresh_content()
 
     ttk.Button(buttons_frame, text="Remove from List", command=remove_selected).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Close", command=manage_window.destroy).pack(side=tk.LEFT, padx=5)
-

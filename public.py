@@ -1,4 +1,3 @@
-# public.py
 import os
 import json
 import asyncio
@@ -10,9 +9,15 @@ from autonomi_client import PublicArchive, Metadata
 logger = logging.getLogger("MissionCtrl")
 
 async def upload_public(app, file_path, from_queue=False):
-    logger.info("Upload Public started for %s", file_path)
-    app._current_operation = 'upload'
-    app.status_label.config(text=f"Uploading file: {os.path.basename(file_path)}")
+    app.status_label.config(
+        text=(
+            f"Getting quote... for {os.path.basename(file_path)}"
+            if app.perform_cost_calc_var.get() and not from_queue
+            else f"Uploading file: {os.path.basename(file_path)}"
+        )
+    )
+    app.is_processing = True
+    app.start_status_animation()
     try:
         with open(file_path, "rb") as f:
             file_data = f.read()
@@ -24,6 +29,38 @@ async def upload_public(app, file_path, from_queue=False):
             app.is_processing = False
             app.stop_status_animation()
             return
+        if app.perform_cost_calc_var.get() and not from_queue:
+            logger.info("Calculating estimated cost for file: %s", file_path)
+            app._current_operation = 'cost_calc'
+            try:
+                estimated_cost = await asyncio.wait_for(
+                    app.client.data_cost(file_data),
+                    timeout=400
+                )
+                logger.info("Estimated cost: %s ANT", estimated_cost)
+            except asyncio.TimeoutError:
+                logger.error("Cost calculation timed out after 400 seconds")
+                app.root.after(0, lambda: messagebox.showerror("Error", "Cost calculation timed out after 400 seconds. Check your network connection."))
+                app.is_processing = False
+                app.stop_status_animation()
+                return
+            logger.info("Showing cost confirmation dialog")
+            app._current_operation = None 
+            app.status_label.config(text=f"Quote retrieved: {estimated_cost} ANT for {os.path.basename(file_path)}")
+            app.stop_status_animation() 
+            proceed = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: messagebox.askyesno("Confirm Upload", f"Estimated cost: {estimated_cost} ANT. Proceed?")
+            )
+            if not proceed:
+                logger.info("Upload cancelled by user")
+                app.is_processing = False
+                app.status_label.config(text="Upload cancelled")
+                return
+        logger.info("Upload started for file: %s", file_path)
+        app._current_operation = 'upload'
+        app.status_label.config(text=f"Uploading file: {os.path.basename(file_path)}")
+        app.start_status_animation()
         chunk_price, chunk_addr = await asyncio.wait_for(
             app.client.data_put_public(file_data, payment_option),
             timeout=15000
@@ -33,16 +70,137 @@ async def upload_public(app, file_path, from_queue=False):
         app.uploaded_files.append((file_name, chunk_addr))
         app.root.after(0, lambda: app._show_upload_success(chunk_addr, file_name, False))
     except asyncio.TimeoutError:
+        logger.error("Upload timed out after 15000 seconds")
         app.root.after(0, lambda: messagebox.showerror("Error", "Upload timed out after 15000 seconds. Check your network connection."))
         app.status_label.config(text="Upload timeout")
     except Exception as e:
         logger.error("Upload error: %s", e)
-        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nCheck your ANT balance in the Wallet tab."))
+        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nNothing insightful to report sorry. ."))
         app.status_label.config(text="Upload failed")
     finally:
         if not from_queue:
             app.is_processing = False
             app.stop_status_animation()
+
+async def upload_public_directory(app, dir_path):
+    app.status_label.config(text=f"Gathering stats for {os.path.basename(dir_path)}...")
+    app.is_processing = True
+    app.start_status_animation()
+    try:
+        from autonomi_client import PaymentOption
+        payment_option = PaymentOption.wallet(app.wallet)
+        ant_balance = int(await app.wallet.balance())
+        if ant_balance <= 0:
+            app.root.after(0, lambda: messagebox.showerror("Error", "Insufficient ANT for upload. Add ANT to your wallet in the Wallet tab."))
+            app.is_processing = False
+            app.stop_status_animation()
+            return
+        def get_dir_stats(path):
+            total_size = 0
+            file_count = 0
+            for root, dirs, files in os.walk(path):
+                file_count += len(files)
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    total_size += os.path.getsize(file_path)
+            return total_size, file_count
+        
+        def format_size(size_in_bytes):
+            KB = 1024
+            MB = KB * 1024
+            GB = MB * 1024
+
+            if size_in_bytes >= GB:
+                return f"{size_in_bytes / GB:.2f} GB", size_in_bytes
+            elif size_in_bytes >= MB:
+                return f"{size_in_bytes / MB:.2f} MB", size_in_bytes
+            else:
+                return f"{size_in_bytes} bytes", size_in_bytes
+
+        total_size, file_count = get_dir_stats(dir_path)
+        logger.info("Directory stats - Total size: %s bytes, File count: %s", total_size, file_count)
+
+        formatted_size, exact_bytes = format_size(total_size)
+
+        app.stop_status_animation()
+        app.status_label.config(text="Waiting for confirmation...")
+
+        confirm_message = (
+            f"Directory: {os.path.basename(dir_path)}\n"
+            f"Directory stats - Total size: {formatted_size} ({exact_bytes} bytes), File count: {file_count}\n"
+            f"Proceed with upload?"
+        )
+        proceed = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: messagebox.askyesno("Confirm Directory Upload", confirm_message)
+        )
+        if not proceed:
+            logger.info("Directory upload cancelled by user")
+            app.is_processing = False
+            app.status_label.config(text="Upload cancelled")
+            return
+
+        app.status_label.config(
+            text=(
+                f"Getting quote... for {os.path.basename(dir_path)}"
+                if app.perform_cost_calc_var.get()
+                else f"Uploading directory: {os.path.basename(dir_path)}"
+            )
+        )
+        app.start_status_animation()
+
+        logger.info("User confirmed directory upload")
+        if app.perform_cost_calc_var.get():
+            logger.info("Calculating estimated cost for directory: %s", dir_path)
+            app._current_operation = 'cost_calc' 
+            try:
+                estimated_cost = await asyncio.wait_for(
+                    app.client.file_cost(dir_path),
+                    timeout=300
+                )
+                logger.info("Estimated cost: %s ANT", estimated_cost)
+            except asyncio.TimeoutError:
+                logger.error("Cost calculation timed out after 300 seconds")
+                app.root.after(0, lambda: messagebox.showerror("Error", "Cost calculation timed out after 300 seconds. Try a smaller directory or check your network."))
+                app.is_processing = False
+                app.stop_status_animation()
+                return
+            logger.info("Showing cost confirmation dialog")
+            app._current_operation = None 
+            app.status_label.config(text=f"Quote retrieved: {estimated_cost} ANT for {os.path.basename(dir_path)}")
+            app.stop_status_animation() 
+            proceed = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: messagebox.askyesno("Confirm Upload", f"Estimated cost for directory: {estimated_cost} ANT. Proceed?")
+            )
+            if not proceed:
+                logger.info("Upload cancelled by user")
+                app.is_processing = False
+                app.status_label.config(text="Upload cancelled")
+                return
+        logger.info("Upload started for directory: %s", dir_path)
+        app._current_operation = 'upload' 
+        app.status_label.config(text=f"Uploading directory: {os.path.basename(dir_path)}")
+        app.start_status_animation() 
+        cost, archive_addr = await asyncio.wait_for(
+            app.client.dir_and_archive_upload_public(dir_path, app.wallet),
+            timeout=15000
+        )
+        logger.info("Directory uploaded to address: %s for %s ANT", archive_addr, cost)
+        dir_name = os.path.basename(dir_path)
+        app.local_archives.append((archive_addr, dir_name, False))
+        app.root.after(0, lambda: app._show_upload_success(archive_addr, dir_name, False))
+    except asyncio.TimeoutError:
+        logger.error("Upload timed out after 15000 seconds")
+        app.root.after(0, lambda: messagebox.showerror("Error", "Upload timed out after 15000 seconds. Check your network connection."))
+        app.status_label.config(text="Upload timeout")
+    except Exception as e:
+        logger.error("Upload error: %s", e)
+        app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Upload failed: {err}\nNothing insightful to report sorry. ."))
+        app.status_label.config(text="Upload failed")
+    finally:
+        app.is_processing = False
+        app.stop_status_animation()
 
 def manage_public_files(app):
     manage_window = tk.Toplevel(app.root)
@@ -133,7 +291,6 @@ def manage_public_files(app):
         files_canvas.configure(scrollregion=files_canvas.bbox("all"))
         archives_inner_frame.update_idletasks()
         archives_canvas.configure(scrollregion=archives_canvas.bbox("all"))
-
 
     refresh_content()
 
@@ -345,4 +502,3 @@ def manage_public_files(app):
     ttk.Button(buttons_frame, text="Append to Archive", command=append_to_archive).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Remove from List", command=remove_selected).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Close", command=manage_window.destroy).pack(side=tk.LEFT, padx=5)
-
