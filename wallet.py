@@ -1107,7 +1107,7 @@ def display_private_key(app, parent_window=None):
     security_frame = tk.Frame(frame, bg=security_bg, padx=10, pady=10, bd=0, highlightthickness=0)
     security_frame.pack(fill=tk.X, pady=(0, 15))
     
-    security_text = "Never share your private key or enter it on any website, even if they claim to be Autonomi. We will never ask for your private key."
+    security_text = "Never share your private key or enter it on any website, even if they claim to be Autonomi."
     tk.Label(security_frame, text=security_text, wraplength=380, 
             fg=security_fg,
             bg=security_bg,
