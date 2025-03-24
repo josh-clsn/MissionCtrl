@@ -11,6 +11,9 @@ from pathlib import Path
 
 logger = logging.getLogger("MissionCtrl")
 
+# Import color scheme from gui.py
+from gui import COLORS
+
 def get_downloads_folder():
     """Cross-platform retrieval of Downloads folder."""
     try:
@@ -60,33 +63,163 @@ def detect_and_display_content(data, parent_frame, filename="data"):
             except UnicodeDecodeError:
                 mime_type = 'application/octet-stream'
 
+    # Content container with border and padding
+    content_container = ttk.Frame(parent_frame, style="Card.TFrame", padding=10)
+    content_container.pack(fill=tk.BOTH, expand=True, pady=10, padx=5)
+
     if mime_type.startswith('image/'):
         try:
             img = Image.open(io.BytesIO(data))
-            img.thumbnail((600, 600))  # Resize for preview
+            img.thumbnail((600, 600))
             photo = ImageTk.PhotoImage(img)
-            label = ttk.Label(parent_frame, image=photo)
-            label.image = photo  # Keep reference to avoid GC
-            label.pack(pady=5)
-            ttk.Label(parent_frame, text=f"{mime_type.split('/')[1].upper()} Image").pack()
+            
+            # Image container
+            img_container = ttk.Frame(content_container, style="TFrame")
+            img_container.pack(fill=tk.BOTH, expand=True)
+            
+            # Display image
+            label = ttk.Label(img_container, image=photo, background=COLORS["bg_light"])
+            label.image = photo
+            label.pack(pady=10)
+            
+            # Image info footer
+            info_frame = ttk.Frame(content_container, style="TFrame")
+            info_frame.pack(fill=tk.X, pady=(5, 0))
+            
+            # Add file type badge
+            type_badge = ttk.Label(info_frame, text=f"{mime_type.split('/')[1].upper()}", 
+                                  background=COLORS["accent_tertiary"], 
+                                  foreground="white",
+                                  padding=(8, 2))
+            type_badge.pack(side=tk.LEFT)
+            
+            # Add dimensions info
+            ttk.Label(info_frame, text=f"Dimensions: {img.width} × {img.height} px", 
+                    foreground=COLORS["text_secondary"],
+                    padding=(10, 0)).pack(side=tk.RIGHT)
+            
         except Exception as e:
             logger.error("Failed to load image: %s", e)
-            ttk.Label(parent_frame, text="Not able to preview the file. Save the file to view it.").pack(pady=5)
+            error_frame = ttk.Frame(content_container, style="TFrame", padding=20)
+            error_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(error_frame, text="⚠️", 
+                    font=("Inter", 24), 
+                    foreground=COLORS["warning"]).pack(pady=(10, 5))
+            ttk.Label(error_frame, text="Unable to preview this image", 
+                    font=("Inter", 12, "bold")).pack()
+            ttk.Label(error_frame, text="Save the file to view it on your device", 
+                    foreground=COLORS["text_secondary"]).pack(pady=(5, 10))
+            
     elif mime_type == 'text/plain':
         try:
-            text_widget = tk.Text(parent_frame, wrap=tk.WORD, height=10, width=60)
-            text_widget.pack(pady=5, fill=tk.BOTH, expand=True)
+            # Create text preview with syntax highlighting
+            text_frame = ttk.Frame(content_container, style="TFrame")
+            text_frame.pack(fill=tk.BOTH, expand=True)
+            
+            text_widget = tk.Text(text_frame, wrap=tk.WORD, height=15, width=80,
+                               font=("Inter Mono", 10),
+                               bg=COLORS["bg_secondary"],
+                               fg=COLORS["text_primary"],
+                               padx=10, pady=10,
+                               relief="flat")
+            text_widget.pack(fill=tk.BOTH, expand=True)
+            
+            # Create scrollbar
+            scrollbar = ttk.Scrollbar(text_widget, orient="vertical", command=text_widget.yview)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            text_widget.config(yscrollcommand=scrollbar.set)
+            
+            # Insert text content
             text_widget.insert(tk.END, data.decode('utf-8'))
             text_widget.config(state=tk.DISABLED)
+            
+            # Add context menu
             from gui import add_context_menu 
             add_context_menu(text_widget)
-            ttk.Label(parent_frame, text="Text Content").pack()
+            
+            # Add info footer
+            info_frame = ttk.Frame(content_container, style="TFrame")
+            info_frame.pack(fill=tk.X, pady=(10, 0))
+            
+            # Add file type badge
+            type_badge = ttk.Label(info_frame, text="TEXT", 
+                                background=COLORS["accent_primary"], 
+                                foreground="white",
+                                padding=(8, 2))
+            type_badge.pack(side=tk.LEFT)
+            
+            # Add file size
+            size_text = f"Size: {len(data)} bytes"
+            if len(data) > 1024:
+                size_text = f"Size: {len(data)/1024:.1f} KB"
+            if len(data) > 1024*1024:
+                size_text = f"Size: {len(data)/(1024*1024):.1f} MB"
+                
+            ttk.Label(info_frame, text=size_text, 
+                    foreground=COLORS["text_secondary"],
+                    padding=(10, 0)).pack(side=tk.RIGHT)
+            
         except Exception as e:
             logger.error("Failed to load text: %s", e)
-            ttk.Label(parent_frame, text="Not able to preview the file. Save the file to view it.").pack(pady=5)
+            error_frame = ttk.Frame(content_container, style="TFrame", padding=20)
+            error_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(error_frame, text="⚠️", 
+                    font=("Inter", 24), 
+                    foreground=COLORS["warning"]).pack(pady=(10, 5))
+            ttk.Label(error_frame, text="Unable to preview this text file", 
+                    font=("Inter", 12, "bold")).pack()
+            ttk.Label(error_frame, text="Save the file to view it on your device", 
+                    foreground=COLORS["text_secondary"]).pack(pady=(5, 10))
     else:
-        ttk.Label(parent_frame, text="Not able to preview the file. Save the file to view it.").pack(pady=5)
-        ttk.Label(parent_frame, text=f"Detected type: {mime_type} | Size: {len(data)} bytes").pack()
+        # Generic file preview for unsupported types
+        preview_frame = ttk.Frame(content_container, style="TFrame", padding=20)
+        preview_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Show appropriate icon based on MIME type
+        icon_text = "📄"
+        if mime_type.startswith('video/'):
+            icon_text = "🎬"
+        elif mime_type.startswith('audio/'):
+            icon_text = "🎵"
+        elif mime_type.startswith('application/pdf'):
+            icon_text = "📕"
+        elif mime_type.startswith('application/zip') or mime_type.startswith('application/x-compressed'):
+            icon_text = "🗜️"
+            
+        ttk.Label(preview_frame, text=icon_text, 
+                font=("Inter", 48)).pack(pady=(10, 15))
+        ttk.Label(preview_frame, text="Preview not available", 
+                font=("Inter", 14, "bold")).pack()
+        ttk.Label(preview_frame, text="Save the file to view it on your device", 
+                foreground=COLORS["text_secondary"]).pack(pady=(5, 10))
+        
+        # File info
+        info_frame = ttk.Frame(preview_frame, style="TFrame", padding=(0, 10, 0, 0))
+        info_frame.pack(fill=tk.X)
+        
+        # Format the file type nicely
+        type_text = mime_type.split('/')[-1].upper()
+        if type_text == "OCTET-STREAM":
+            type_text = "BINARY"
+            
+        # Add file type badge
+        type_badge = ttk.Label(info_frame, text=type_text, 
+                            background=COLORS["text_secondary"], 
+                            foreground="white",
+                            padding=(8, 2))
+        type_badge.pack()
+        
+        # Size info
+        size_text = f"Size: {len(data)} bytes"
+        if len(data) > 1024:
+            size_text = f"Size: {len(data)/1024:.1f} KB"
+        if len(data) > 1024*1024:
+            size_text = f"Size: {len(data)/(1024*1024):.1f} MB"
+            
+        ttk.Label(preview_frame, text=size_text, 
+                foreground=COLORS["text_secondary"]).pack(pady=(5, 0))
 
 def show_data_window(app, data, is_private, archive=None, is_single_chunk=False, address_input=None):
     """Displays retrieved data or archive contents in a scrollable window."""
@@ -95,59 +228,129 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     view_window.geometry("800x600")
     view_window.minsize(800, 600)
     view_window.resizable(True, True)
+    view_window.configure(bg=COLORS["bg_light"])
 
-    main_frame = ttk.Frame(view_window)
+    main_frame = ttk.Frame(view_window, style="TFrame", padding="20")
     main_frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Add a title header
+    header_frame = ttk.Frame(main_frame, style="TFrame")
+    header_frame.pack(fill=tk.X, pady=(0, 15))
+    
+    # Set title based on content type
+    title_text = "Retrieved Data"
+    if is_private and archive:
+        title_text = "Retrieved Private Archive"
+    elif is_private:
+        title_text = "Retrieved Private Data"
+    elif is_single_chunk:
+        title_text = "Retrieved Single Public Chunk"
+    else:
+        title_text = "Retrieved Public Archive"
+        
+    ttk.Label(header_frame, text=title_text, 
+            font=("Inter", 16, "bold"), 
+            foreground=COLORS["accent_primary"]).pack(anchor="w")
 
-    canvas = tk.Canvas(main_frame)
-    scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-    content_frame = ttk.Frame(canvas)
+    content_frame = ttk.Frame(main_frame, style="Card.TFrame", padding="20")
+    content_frame.pack(fill=tk.BOTH, expand=True)
+
+    canvas = tk.Canvas(content_frame, bg=COLORS["bg_light"], 
+                     bd=0, highlightthickness=0)
+    scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas, style="TFrame")
+    
     canvas.configure(yscrollcommand=scrollbar.set)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     
-    canvas.create_window((0, 0), window=content_frame, anchor="nw")
-    content_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
+    # Content display based on type
     if is_private and archive:
-        ttk.Label(content_frame, text="Retrieved Private Archive:", font=("Arial", 12, "bold")).pack(pady=5)
         file_list = list(archive.files())
         if not file_list:
-            ttk.Label(content_frame, text="No files found in archive.").pack()
+            ttk.Label(scrollable_frame, text="No files found in archive.", 
+                    foreground=COLORS["text_secondary"]).pack(pady=10)
         else:
             for path, metadata in file_list:
-                frame = ttk.Frame(content_frame)
-                frame.pack(fill=tk.X, pady=2, padx=5)
-                ttk.Label(frame, text=f"- {path} (Size: {metadata.size} bytes)").pack(side=tk.LEFT, padx=5)
+                item_frame = ttk.Frame(scrollable_frame, style="TFrame")
+                item_frame.pack(fill=tk.X, pady=5, padx=5)
+                
+                file_icon = "📄 "  # Default file icon
+                if path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    file_icon = "🖼️ "
+                elif path.lower().endswith(('.mp4', '.mov', '.avi')):
+                    file_icon = "🎬 "
+                elif path.lower().endswith(('.mp3', '.wav', '.ogg')):
+                    file_icon = "🎵 "
+                elif path.lower().endswith(('.pdf')):
+                    file_icon = "📕 "
+                elif path.lower().endswith(('.zip', '.tar', '.gz')):
+                    file_icon = "🗜️ "
+                
+                ttk.Label(item_frame, text=f"{file_icon}{path}", 
+                        font=("Inter", 11)).pack(side=tk.LEFT, padx=5)
+                ttk.Label(item_frame, text=f"{metadata.size} bytes", 
+                        foreground=COLORS["text_secondary"]).pack(side=tk.RIGHT, padx=5)
+    
     elif is_private:
-        ttk.Label(content_frame, text="Retrieved Private Data:", font=("Arial", 12, "bold")).pack(pady=5)
-        detect_and_display_content(data, content_frame)
+        detect_and_display_content(data, scrollable_frame)
+    
     else:
         if is_single_chunk:
-            ttk.Label(content_frame, text="Retrieved Single Public Chunk:", font=("Arial", 12, "bold")).pack(pady=5)
-            detect_and_display_content(data, content_frame)
+            detect_and_display_content(data, scrollable_frame)
         else:
-            ttk.Label(content_frame, text="Retrieved Public Archive:", font=("Arial", 12, "bold")).pack(pady=5)
             file_list = list(archive.files()) if archive else []
             if not file_list:
-                ttk.Label(content_frame, text="No files found in archive.").pack()
+                ttk.Label(scrollable_frame, text="No files found in archive.", 
+                        foreground=COLORS["text_secondary"]).pack(pady=10)
             else:
                 chunk_addresses = list(archive.addresses()) if archive else []
                 file_names = [item[0] for item in file_list]
+                
                 for name, addr in zip(file_names, chunk_addresses):
-                    frame = ttk.Frame(content_frame)
-                    frame.pack(fill=tk.X, pady=2, padx=5)
-                    ttk.Label(frame, text=f"- {name} (Address: {addr})").pack(side=tk.LEFT, padx=5)
-                    loading_label = ttk.Label(frame, text="")
+                    item_frame = ttk.Frame(scrollable_frame, style="TFrame", padding=5)
+                    item_frame.pack(fill=tk.X, pady=3)
+                    
+                    file_icon = "📄 "  # Default file icon
+                    if name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        file_icon = "🖼️ "
+                    elif name.lower().endswith(('.mp4', '.mov', '.avi')):
+                        file_icon = "🎬 "
+                    elif name.lower().endswith(('.mp3', '.wav', '.ogg')):
+                        file_icon = "🎵 "
+                    elif name.lower().endswith(('.pdf')):
+                        file_icon = "📕 "
+                    elif name.lower().endswith(('.zip', '.tar', '.gz')):
+                        file_icon = "🗜️ "
+                    
+                    info_frame = ttk.Frame(item_frame, style="TFrame")
+                    info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                    
+                    ttk.Label(info_frame, text=f"{file_icon}{name}", 
+                            font=("Inter", 11)).pack(anchor="w")
+                    ttk.Label(info_frame, text=f"Address: {addr}", 
+                            foreground=COLORS["text_secondary"], 
+                            font=("Inter", 9)).pack(anchor="w")
+                    
+                    action_frame = ttk.Frame(item_frame, style="TFrame")
+                    action_frame.pack(side=tk.RIGHT)
+                    
+                    loading_label = ttk.Label(action_frame, text="")
                     loading_label.pack(side=tk.LEFT, padx=5)
-                    view_button = ttk.Button(frame, text="View")
-                    view_button.config(command=lambda b=view_button, a=addr, n=name, l=loading_label: view_file(app, a, n, b, l))
+                    
+                    view_button = ttk.Button(action_frame, text="View", style="Secondary.TButton", width=8)
+                    view_button.config(command=lambda b=view_button, a=addr, n=name, l=loading_label: 
+                                     view_file(app, a, n, b, l))
                     view_button.pack(side=tk.LEFT, padx=5)
 
     content_frame.update_idletasks()
 
-    button_frame = ttk.Frame(view_window)
-    button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
+    # Button frame at bottom
+    button_frame = ttk.Frame(main_frame, style="TFrame", padding=(0, 15, 0, 0))
+    button_frame.pack(side=tk.BOTTOM, fill=tk.X)
 
     bottom_loading_label = ttk.Label(button_frame, text="")
     bottom_loading_label.pack(side=tk.LEFT, padx=5)
@@ -269,13 +472,23 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                     set_loading_state(save_all_button, False, "", bottom_loading_label)
             asyncio.run_coroutine_threadsafe(do_save_all(), app.loop)
 
-    save_button = ttk.Button(button_frame, text="Save" if (is_private or is_single_chunk) else "Save File", command=save_individual)
-    save_button.pack(side=tk.LEFT, padx=5)
+    # Footer with action buttons
+    action_buttons = ttk.Frame(button_frame, style="TFrame")
+    action_buttons.pack(side=tk.RIGHT)
     
-    if not is_private and archive and not is_single_chunk:
-        save_all_button = ttk.Button(button_frame, text="Save All", command=save_all)
-        save_all_button.pack(side=tk.LEFT, padx=5)
-    ttk.Button(button_frame, text="Close", command=lambda: (logger.info("Closing window..."), view_window.destroy())).pack(side=tk.LEFT, padx=5)
+    # Only show Save All button if there's an archive
+    if archive or is_single_chunk or (is_private and data):
+        save_all_button = ttk.Button(action_buttons, text="Save All", 
+                                command=save_all, style="Accent.TButton")
+        save_all_button.pack(side=tk.RIGHT, padx=(10, 0))
+    
+    save_button = ttk.Button(action_buttons, text="Save", 
+                        command=save_individual, style="Accent.TButton")
+    save_button.pack(side=tk.RIGHT)
+    
+    close_button = ttk.Button(action_buttons, text="Close", 
+                         command=view_window.destroy, style="Secondary.TButton")
+    close_button.pack(side=tk.RIGHT, padx=(0, 10))
 
     view_window.update_idletasks()
 

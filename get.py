@@ -7,8 +7,22 @@ import view
 
 logger = logging.getLogger("MissionCtrl")
 
-async def _retrieve(app, address_input):
-    # Attempt retrieval with fallback logic
+async def _retrieve(app, address_input, from_queue=False, return_status=False):
+    """
+    Retrieve data from the network
+    
+    Args:
+        app: The application instance
+        address_input: The address to retrieve data from
+        from_queue: Whether this is being called as part of queue processing
+        return_status: Whether to return a status indicating success/failure
+        
+    Returns:
+        If return_status is True, returns True for success, False for failure
+        Otherwise returns None
+    """
+    success = False
+    
     try:
         data = None
         is_private = False
@@ -33,23 +47,29 @@ async def _retrieve(app, address_input):
                     logger.info("Successfully retrieved single public chunk")
                 except Exception as chunk_error:
                     logger.error("Retrieval failed for all types: %s", chunk_error)
-                    app.root.after(0, lambda: messagebox.showerror(
-                        "Retrieval Failed",
-                        f"Couldn’t retrieve data from {address_input[:10]}...\nEnsure the address is correct and matches a private or public data chunk or archive."
-                    ))
-                    return
+                    if not from_queue:
+                        app.root.after(0, lambda: messagebox.showerror(
+                            "Retrieval Failed",
+                            f"Couldn't retrieve data from {address_input[:10]}...\nEnsure the address is correct and matches a private or public data chunk or archive."
+                        ))
+                    return False if return_status else None
 
+        # Show data window and mark as successful
         app.root.after(0, lambda: view.show_data_window(app, data, is_private, archive, is_single_chunk, address_input))
-
+        success = True
     except Exception as e:
-        import traceback
-        logger.error("Retrieval failed: %s\n%s", e, traceback.format_exc())
-        app.root.after(0, lambda: messagebox.showerror("Error", f"Retrieval failed: {str(e)}\nDetails: {traceback.format_exc()}"))
+        logger.error("Fatal error in _retrieve: %s", e)
+        if not from_queue:
+            app.root.after(0, lambda err=e: messagebox.showerror("Error", f"Retrieval error: {err}"))
     finally:
-        app.is_processing = False
-        app.stop_status_animation()
+        # Only reset processing state if this wasn't called as part of queue processing
+        if not from_queue:
+            app.is_processing = False
+            app.stop_status_animation()
+    
+    return success if return_status else None
 
-def retrieve_data(app):
+def retrieve_data(app, from_queue=False):
     logger.info("Retrieve Data button clicked")
     app.status_label.config(text="Preparing retrieval...")
     address_input = app.retrieve_entry.get().strip()
@@ -60,5 +80,9 @@ def retrieve_data(app):
 
     app.is_processing = True
     app._current_operation = 'download'
-    app.start_status_animation()
-    asyncio.run_coroutine_threadsafe(_retrieve(app, address_input), app.loop)
+    
+    # Only start the animation if not part of queue processing
+    if not from_queue:
+        app.start_status_animation()
+        
+    asyncio.run_coroutine_threadsafe(_retrieve(app, address_input, from_queue), app.loop)
