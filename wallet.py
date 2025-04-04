@@ -116,7 +116,7 @@ def get_wallet_password(app, create=False):
     pwd_window.resizable(True, True)
     # Removed fixed geometry, let Tkinter size based on content
     # pwd_window.geometry("350x300" if create else "350x220")
-    pwd_window.minsize(350, 220) # Set a minimum size
+    pwd_window.minsize(350, 260) # Increased min height
     pwd_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
     
     # Set window on top of other windows
