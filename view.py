@@ -44,7 +44,7 @@ def get_downloads_folder():
         pass  # Fallback if xdg-user-dir fails
     return str(Path.home() / "Downloads")
 
-def detect_and_display_content(data, parent_frame, filename="data"):
+def detect_and_display_content(app, data, parent_frame, filename="data"):
     """Detects content type and renders preview in UI."""
     mime_type, _ = mimetypes.guess_type(filename)
     if mime_type is None:
@@ -192,10 +192,14 @@ def detect_and_display_content(data, parent_frame, filename="data"):
         
         # Show appropriate icon based on MIME type
         icon_text = "📄"
+        is_playable_video = False
+        is_playable_audio = False
         if mime_type.startswith('video/'):
             icon_text = "🎬"
+            is_playable_video = True
         elif mime_type.startswith('audio/'):
             icon_text = "🎵"
+            is_playable_audio = True
         elif mime_type.startswith('application/pdf'):
             icon_text = "📕"
         elif mime_type.startswith('application/zip') or mime_type.startswith('application/x-compressed'):
@@ -233,6 +237,21 @@ def detect_and_display_content(data, parent_frame, filename="data"):
             
         ttk.Label(preview_frame, text=size_text, 
                 foreground=COLORS["text_secondary"]).pack(pady=(5, 0))
+
+        # Add Play button for audio/video if detected
+        if is_playable_audio or is_playable_video:
+            play_button_frame = ttk.Frame(preview_frame, style="TFrame")
+            play_button_frame.pack(pady=(15, 0))
+
+            if is_playable_audio:
+                play_cmd = lambda: open_audio_player(app, data, filename)
+            else: # is_playable_video
+                play_cmd = lambda: open_external_video_player(app, data, filename)
+
+            play_button = ttk.Button(play_button_frame, text="Play", 
+                                   command=play_cmd, 
+                                   style="Accent.TButton", width=12)
+            play_button.pack()
 
 def show_data_window(app, data, is_private, archive=None, is_single_chunk=False, address_input=None):
     """Displays retrieved data or archive contents in a scrollable window."""
@@ -313,11 +332,11 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                         foreground=gui.CURRENT_COLORS["text_secondary"]).pack(side=tk.RIGHT, padx=5) # Use gui.CURRENT_COLORS
     
     elif is_private:
-        detect_and_display_content(data, scrollable_frame)
+        detect_and_display_content(app, data, scrollable_frame)
     
     else:
         if is_single_chunk:
-            detect_and_display_content(data, scrollable_frame)
+            detect_and_display_content(app, data, scrollable_frame)
         else:
             file_list = list(archive.files()) if archive else []
             if not file_list:
@@ -558,7 +577,7 @@ def view_file(app, addr, name, button, loading_label):
             
             sub_frame = ttk.Frame(sub_window)
             sub_frame.pack(fill=tk.BOTH, expand=True)
-            detect_and_display_content(file_data, sub_frame, name)
+            detect_and_display_content(app, file_data, sub_frame, name)
             ttk.Button(sub_window, text="Close", command=sub_window.destroy).pack(pady=5)
         except Exception as e:
             import traceback
