@@ -536,18 +536,23 @@ def display_public_files(app, parent_frame):
     from tkinter import ttk, messagebox
     from gui import add_context_menu, CURRENT_COLORS
     
-    # Create a search frame
+    # --- Layout Order --- 
+    # 1. Search bar at the top
+    # 2. Buttons at the bottom
+    # 3. Lists fill the middle
+    
+    # Create search frame (Pack later)
     search_frame = ttk.Frame(parent_frame)
-    search_frame.pack(fill=tk.X, padx=10, pady=5)
     ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
     search_entry = ttk.Entry(search_frame)
     search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
     add_context_menu(search_entry)
     
-    # Create scrollable frames for files and archives
-    files_frame = ttk.LabelFrame(parent_frame, text="Uploaded Files", padding=5)
-    files_frame.pack(fill=tk.BOTH, padx=10, pady=5, expand=True)
+    # Create buttons frame (Pack later)
+    buttons_frame = ttk.Frame(parent_frame)
     
+    # Create scrollable frames for files and archives (Pack later)
+    files_frame = ttk.LabelFrame(parent_frame, text="Uploaded Files", padding=5)
     files_canvas = tk.Canvas(files_frame, bg=CURRENT_COLORS["bg_secondary"])
     files_scrollbar = ttk.Scrollbar(files_frame, orient="vertical", command=files_canvas.yview)
     files_inner_frame = ttk.Frame(files_canvas)
@@ -560,8 +565,6 @@ def display_public_files(app, parent_frame):
     check_vars = []
     
     archives_frame = ttk.LabelFrame(parent_frame, text="Archives", padding=5)
-    archives_frame.pack(fill=tk.BOTH, padx=10, pady=5, expand=True)
-    
     archives_canvas = tk.Canvas(archives_frame, bg=CURRENT_COLORS["bg_secondary"])
     archives_scrollbar = ttk.Scrollbar(archives_frame, orient="vertical", command=archives_canvas.yview)
     archives_inner_frame = ttk.Frame(archives_canvas)
@@ -573,6 +576,13 @@ def display_public_files(app, parent_frame):
     
     archive_vars = []
     
+    # --- Pack elements in correct order --- 
+    search_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+    buttons_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=10)
+    # Pack lists last, filling the middle space from the top down
+    files_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=10, pady=5, expand=True)
+    archives_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=10, pady=5, expand=True)
+
     def refresh_content(query=""):
         for widget in files_inner_frame.winfo_children():
             widget.destroy()
@@ -724,10 +734,7 @@ def display_public_files(app, parent_frame):
             app.save_persistent_data()
             refresh_content()
     
-    # Add buttons
-    buttons_frame = ttk.Frame(parent_frame)
-    buttons_frame.pack(fill=tk.X, pady=10, padx=10)
-    
+    # Add buttons to the buttons_frame
     ttk.Button(buttons_frame, text="Add to Archive", command=add_to_archive, style="Accent.TButton").pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Remove from List", command=remove_selected, style="Accent.TButton").pack(side=tk.LEFT, padx=5)
     
