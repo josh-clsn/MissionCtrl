@@ -13,8 +13,16 @@ import base64
 import math
 import magic  # Library for MIME type detection
 import gui # Add gui import
+import pygame # Add pygame for audio
+import threading # Add threading for audio playback
+import tempfile # Add tempfile for video playback
 
 logger = logging.getLogger("MissionCtrl")
+
+# Define common audio file extensions
+AUDIO_EXTENSIONS = (".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac")
+# Define common video file extensions
+VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv")
 
 # Import color scheme from gui.py
 from gui import COLORS
@@ -349,11 +357,26 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                     
                     loading_label = ttk.Label(action_frame, text="")
                     loading_label.pack(side=tk.LEFT, padx=5)
-                    
-                    view_button = ttk.Button(action_frame, text="View", style="Secondary.TButton", width=8)
-                    view_button.config(command=lambda b=view_button, a=addr, n=name, l=loading_label: 
-                                     view_file(app, a, n, b, l))
-                    view_button.pack(side=tk.LEFT, padx=5)
+
+                    # Check file type for action button
+                    is_audio = name.lower().endswith(AUDIO_EXTENSIONS)
+                    is_video = name.lower().endswith(VIDEO_EXTENSIONS)
+
+                    if is_audio:
+                        button_text = "Play"
+                        command_func = play_audio
+                    elif is_video:
+                        button_text = "Play"
+                        command_func = play_video # New function for video
+                    else:
+                        button_text = "View"
+                        command_func = view_file
+
+                    action_button = ttk.Button(action_frame, text=button_text, style="Secondary.TButton", width=8)
+                    # Assign the command using a lambda that captures the current loop variables correctly
+                    action_button.config(command=lambda cmd=command_func, b=action_button, a=addr, n=name, l=loading_label:
+                                         cmd(app, a, n, b, l))
+                    action_button.pack(side=tk.LEFT, padx=5)
 
     content_frame.update_idletasks()
 
@@ -507,6 +530,9 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     view_window.attributes("-topmost", True)
     view_window.update_idletasks()
 
+    # Start playing immediately
+    play_music()
+
 def view_file(app, addr, name, button, loading_label):
     """Async retrieval and display of a single public file."""
     if not hasattr(button, "is_busy"):
@@ -545,3 +571,238 @@ def view_file(app, addr, name, button, loading_label):
             loading_label.update_idletasks()
     
     asyncio.run_coroutine_threadsafe(_view(), app.loop)
+
+def play_audio(app, address, filename, button, loading_label):
+    """Initiates fetching audio data and opening the player."""
+    logger.info(f"Play button clicked for: {filename} ({address})")
+    
+    # Disable button and show loading indicator
+    if button:
+        button.config(state=tk.DISABLED)
+    loading_label.config(text="Loading...")
+    loading_label.update_idletasks()
+
+    # Run the async fetch in the background
+    asyncio.run_coroutine_threadsafe(
+        _do_play_audio(app, address, filename, button, loading_label),
+        app.loop
+    )
+
+async def _do_play_audio(app, address, filename, button, loading_label):
+    """Fetches audio data and calls the function to open the player window."""
+    audio_data = None
+    try:
+        logger.info(f"Fetching audio data for {filename} from {address}")
+        # Fetch the audio data (assuming public for now)
+        # TODO: Add handling for private data if needed
+        audio_data = await app.client.data_get_public(address)
+        logger.info(f"Successfully fetched {len(audio_data)} bytes for {filename}")
+        
+        # Call the player window function in the main thread
+        app.root.after(0, open_audio_player, app, audio_data, filename)
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"Failed to fetch or play audio {filename}: {e}\n{traceback.format_exc()}")
+        app.root.after(0, messagebox.showerror, "Error", f"Failed to load audio: {e}")
+    finally:
+        # Re-enable button and clear loading indicator in the main thread
+        def reset_ui():
+            if button:
+                button.config(state=tk.NORMAL)
+            loading_label.config(text="")
+        app.root.after(0, reset_ui)
+
+def open_audio_player(app, audio_data, filename):
+    """Creates and manages the audio player window using Tkinter and Pygame."""
+    
+    player_window = tk.Toplevel(app.root)
+    player_window.title(f"Play - {filename}")
+    player_window.geometry("350x150")
+    player_window.resizable(False, False)
+    player_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
+    player_window.transient(app.root)
+    player_window.grab_set()
+    
+    if hasattr(app, 'is_dark_mode') and app.is_dark_mode:
+        gui.apply_theme_to_toplevel(player_window, True)
+        
+    # Ensure window is brought to the front
+    player_window.lift()
+    player_window.focus_force()
+    player_window.attributes("-topmost", True)
+    player_window.update_idletasks()
+        
+    playback_thread = None
+    paused = False
+
+    try:
+        # Initialize pygame mixer in a separate thread to avoid blocking
+        pygame.mixer.init()
+        
+        # Load audio from memory
+        audio_stream = io.BytesIO(audio_data)
+        pygame.mixer.music.load(audio_stream)
+        logger.info(f"Audio loaded into pygame mixer for {filename}")
+
+    except Exception as e:
+        logger.error(f"Pygame error loading audio {filename}: {e}")
+        messagebox.showerror("Playback Error", f"Could not load audio for playback: {e}", parent=player_window)
+        player_window.destroy()
+        return
+        
+    # --- Player Controls ---
+    control_frame = ttk.Frame(player_window, style="TFrame", padding=20)
+    control_frame.pack(fill=tk.BOTH, expand=True)
+
+    status_label = ttk.Label(control_frame, text="Ready", anchor="center")
+    status_label.pack(fill=tk.X, pady=(0, 10))
+    
+    button_frame = ttk.Frame(control_frame, style="TFrame")
+    button_frame.pack()
+
+    def run_playback():
+        """Runs pygame mixer functions in a dedicated thread."""
+        try:
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy() or paused:
+                pygame.time.Clock().tick(10) # Keep thread alive while playing/paused
+            # Playback finished naturally
+            player_window.after(0, lambda: status_label.config(text="Finished"))
+            player_window.after(0, lambda: play_pause_button.config(state=tk.DISABLED))
+        except Exception as e:
+            logger.error(f"Error during playback thread: {e}")
+            player_window.after(0, lambda: status_label.config(text=f"Error: {e}"))
+        finally:
+            logger.info("Playback thread finished.")
+            
+    def play_music():
+        nonlocal playback_thread
+        if not pygame.mixer.music.get_busy() and not playback_thread:
+            status_label.config(text="Playing...")
+            # Start playback in a new thread
+            playback_thread = threading.Thread(target=run_playback, daemon=True)
+            playback_thread.start()
+            play_pause_button.config(text="Pause")
+            stop_button.config(state=tk.NORMAL)
+            play_pause_button.config(state=tk.NORMAL)
+        elif paused:
+            pause_unpause_music() # If paused, treat play as unpause
+
+    def pause_unpause_music():
+        nonlocal paused
+        if paused:
+            pygame.mixer.music.unpause()
+            paused = False
+            status_label.config(text="Playing...")
+            play_pause_button.config(text="Pause")
+        else:
+            pygame.mixer.music.pause()
+            paused = True
+            status_label.config(text="Paused")
+            play_pause_button.config(text="Play")
+            
+    def stop_music():
+        nonlocal playback_thread, paused
+        logger.info("Stopping music")
+        pygame.mixer.music.stop()
+        pygame.mixer.music.unload() # Unload the current stream
+        paused = False 
+        playback_thread = None # Allow thread to exit if running
+        status_label.config(text="Stopped")
+        play_pause_button.config(text="Play", state=tk.DISABLED) # Disable play until reloaded if needed
+        stop_button.config(state=tk.DISABLED)
+        # Optionally close window on stop, or require manual close:
+        # player_window.destroy() 
+
+    play_pause_button = ttk.Button(button_frame, text="Play", command=play_music, width=10)
+    play_pause_button.pack(side=tk.LEFT, padx=5)
+    
+    stop_button = ttk.Button(button_frame, text="Stop", command=stop_music, state=tk.DISABLED, width=10)
+    stop_button.pack(side=tk.LEFT, padx=5)
+
+    def on_close():
+        logger.info("Closing player window")
+        stop_music() # Ensure music stops
+        try:
+            # Important: Quit mixer only when completely done
+            # If other players might exist, this needs more careful management
+            pygame.mixer.quit()
+            logger.info("Pygame mixer quit.")
+        except Exception as e:
+             logger.warning(f"Error quitting pygame mixer: {e}")
+        player_window.destroy()
+
+    player_window.protocol("WM_DELETE_WINDOW", on_close)
+    
+    # Start playing immediately
+    play_music()
+
+# --- Video Playback Implementation ---
+def play_video(app, address, filename, button, loading_label):
+    """Initiates fetching video data and opening it externally."""
+    logger.info(f"Video play button clicked for: {filename} ({address})")
+
+    # Disable button and show loading indicator
+    if button:
+        button.config(state=tk.DISABLED)
+    loading_label.config(text="Loading...")
+    loading_label.update_idletasks()
+
+    # Run the async fetch in the background
+    asyncio.run_coroutine_threadsafe(
+        _do_play_video(app, address, filename, button, loading_label),
+        app.loop
+    )
+
+async def _do_play_video(app, address, filename, button, loading_label):
+    """Fetches video data and calls the function to open it externally."""
+    video_data = None
+    try:
+        logger.info(f"Fetching video data for {filename} from {address}")
+        # Fetch the video data (assuming public for now)
+        # TODO: Add handling for private data if needed
+        video_data = await app.client.data_get_public(address)
+        logger.info(f"Successfully fetched {len(video_data)} bytes for {filename}")
+
+        # Call the external player function in the main thread
+        app.root.after(0, open_external_video_player, app, video_data, filename)
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Failed to fetch or play video {filename}: {e}\n{traceback.format_exc()}")
+        app.root.after(0, messagebox.showerror, "Error", f"Failed to load video: {e}")
+    finally:
+        # Re-enable button and clear loading indicator in the main thread
+        def reset_ui():
+            if button:
+                button.config(state=tk.NORMAL)
+            loading_label.config(text="")
+        app.root.after(0, reset_ui)
+
+def open_external_video_player(app, video_data, filename):
+    """Saves video data to a temporary file and opens it with the default system player."""
+    try:
+        # Create a temporary file with the correct extension
+        _, ext = os.path.splitext(filename)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+            temp_file.write(video_data)
+            temp_file_path = temp_file.name
+        logger.info(f"Video data saved to temporary file: {temp_file_path}")
+
+        # Open the temporary file with the default system application
+        if platform.system() == "Windows":
+            os.startfile(temp_file_path)
+        elif platform.system() == "Darwin": # macOS
+            subprocess.run(["open", temp_file_path], check=True)
+        else: # Linux and other Unix-like systems
+            subprocess.run(["xdg-open", temp_file_path], check=True)
+        logger.info(f"Launched default player for: {temp_file_path}")
+
+        # Optional: Clean up the temp file after a delay or when the app closes.
+        # For simplicity, we're leaving it; the OS usually cleans temp dirs.
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Failed to open video in external player: {e}\n{traceback.format_exc()}")
+        messagebox.showerror("Error", f"Could not open video player: {e}")

@@ -555,7 +555,7 @@ def setup_main_gui(app):
     button_frame = ttk.Frame(actions_card, style="CardContent.TFrame")
     button_frame.pack(fill=tk.X)
     
-    upload_btn = ttk.Button(button_frame, text="Upload File", 
+    upload_btn = ttk.Button(button_frame, text="Upload", 
                           command=app.upload_file, style="Accent.TButton")
     upload_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
     

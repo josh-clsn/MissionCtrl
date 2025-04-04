@@ -1396,13 +1396,13 @@ def show_styled_error(app, title, message, parent=None):
              justify="center").pack(pady=(0, 20))
     
     # OK button
-    ok_btn = tk.Button(frame, text="OK", 
-                     bg="#4F46E5", fg="white",
-                     activebackground="#7C3AED", activeforeground="white",
-                     font=("Inter", 10), padx=30, pady=6,
-                     relief="flat", bd=0,
-                     command=error_window.destroy)
-    ok_btn.pack()
+    # ok_btn = tk.Button(frame, text="OK", 
+    #                  bg="#4F46E5", fg="white",
+    #                  activebackground="#7C3AED", activeforeground="white",
+    #                  font=("Inter", 10), padx=30, pady=6,
+    #                  relief="flat", bd=0,
+    #                  command=error_window.destroy)
+    # ok_btn.pack()
     
     # Apply theme if needed
     if is_dark:

@@ -47,3 +47,4 @@ urllib3==2.3.0
 web3==7.9.0
 websockets==13.1
 yarl==1.18.3
+pygame
