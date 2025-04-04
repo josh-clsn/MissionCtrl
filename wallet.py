@@ -112,9 +112,11 @@ def get_wallet_password(app, create=False):
     pwd_window = Toplevel(app.root)
     pwd_window.title(f"Wallet Password")
     
-    # Make window size fixed
-    pwd_window.resizable(False, False)
-    pwd_window.geometry("350x300" if create else "350x220")  # Increased height for better spacing
+    # Allow window resizing
+    pwd_window.resizable(True, True)
+    # Removed fixed geometry, let Tkinter size based on content
+    # pwd_window.geometry("350x300" if create else "350x220")
+    pwd_window.minsize(350, 220) # Set a minimum size
     pwd_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
     
     # Set window on top of other windows
@@ -286,12 +288,16 @@ def delete_wallet(app, wallet_window=None):
     # Create custom styled confirmation dialog
     confirm_window = tk.Toplevel(app.root)
     confirm_window.title("Confirm Deletion")
-    confirm_window.geometry("450x250")
+    # Removed fixed geometry
+    # confirm_window.geometry("450x250")
+    confirm_window.minsize(450, 250) # Set a minimum size
     confirm_window.configure(bg=COLORS["bg_light"])
     confirm_window.transient(wallet_window if wallet_window else app.root)
     confirm_window.grab_set()
     confirm_window.lift() 
     confirm_window.focus_force() 
+    # Enable resizing
+    confirm_window.resizable(True, True)
     
     # Add window attributes to keep it on top
     confirm_window.attributes("-topmost", True)
@@ -343,13 +349,17 @@ def delete_wallet(app, wallet_window=None):
         # Show success message with custom dialog
         success_window = tk.Toplevel(app.root)
         success_window.title("Success")
-        success_window.geometry("400x200")
+        # Removed fixed geometry
+        # success_window.geometry("350x180")
+        success_window.minsize(350, 180)
         success_window.configure(bg=COLORS["bg_light"])
         success_window.transient(app.root)
         success_window.grab_set()
-        success_window.lift()
-        success_window.focus_force()
+        success_window.lift() 
+        success_window.focus_force()  
         success_window.attributes("-topmost", True)
+        # Enable resizing
+        success_window.resizable(True, True)
         
         success_frame = ttk.Frame(success_window, style="TFrame", padding=20)
         success_frame.pack(fill=tk.BOTH, expand=True)
@@ -691,7 +701,8 @@ def import_wallet(app, wallet_window=None):
             # Custom success popup with theme support
             success_window = tk.Toplevel(app.root)
             success_window.title("Success")
-            success_window.geometry("350x180")
+            # Removed fixed geometry
+            # success_window.geometry("350x180")
             success_window.minsize(350, 180)
             success_window.configure(bg=bg_color)
             success_window.transient(app.root)
@@ -699,6 +710,8 @@ def import_wallet(app, wallet_window=None):
             success_window.lift() 
             success_window.focus_force()  
             success_window.attributes("-topmost", True)
+            # Enable resizing
+            success_window.resizable(True, True)
             
             # Content
             frame = tk.Frame(success_window, bg=bg_color, padx=20, pady=20)
@@ -776,7 +789,9 @@ def create_wallet(app, wallet_window=None):
             # Create a properly styled and positioned confirmation dialog
             confirm_window = tk.Toplevel(app.root)
             confirm_window.title("Wallet Exists")
-            confirm_window.geometry("450x250")
+            # Removed fixed geometry
+            # confirm_window.geometry("450x250")
+            confirm_window.minsize(450, 250) # Set min size
             
             # Use proper theme colors
             import gui
@@ -792,7 +807,8 @@ def create_wallet(app, wallet_window=None):
             confirm_window.lift()
             confirm_window.focus_force()
             confirm_window.attributes("-topmost", True)
-            confirm_window.resizable(False, False)
+            # Enable resizing
+            confirm_window.resizable(True, True)
             
             # Main frame
             frame = tk.Frame(confirm_window, bg=bg_color, padx=20, pady=20)
@@ -891,7 +907,11 @@ def _show_wallet_created_info(app, address, pk_display):
     """Unused variant of wallet creation info display."""
     info_window = tk.Toplevel(app.root)
     info_window.title("New Wallet Info")
-    info_window.geometry("400x250")
+    # Removed fixed geometry
+    # info_window.geometry("400x250")
+    info_window.minsize(400, 250) # Set min size
+    # Enable resizing
+    info_window.resizable(True, True)
     
     text = tk.Text(info_window, height=8, width=50)
     text.pack(pady=10, padx=10, expand=True, fill=tk.BOTH)
@@ -967,13 +987,16 @@ def _prompt_password(app, message, callback, parent_window=None):
     
     password_window = Toplevel(parent_window)
     password_window.title("Wallet Password")
-    password_window.geometry("400x200")
+    # Removed fixed geometry
+    # password_window.geometry("400x200")
     password_window.minsize(400, 200)
     password_window.transient(parent_window)
     password_window.grab_set()
     password_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
     password_window.lift()
     password_window.focus_force()
+    # Enable resizing
+    password_window.resizable(True, True)
     
     # Header frame
     header_frame = Label(password_window, 
@@ -1074,7 +1097,9 @@ def display_private_key(app, parent_window=None):
     # Create a confirmation dialog
     confirm_window = tk.Toplevel(app.root)
     confirm_window.title("Security Verification")
-    confirm_window.geometry("450x400")  # Increased height for better display
+    # Removed fixed geometry
+    # confirm_window.geometry("450x400")  # Increased height for better display
+    confirm_window.minsize(450, 400) # Set min size
     
     # Use proper theme colors
     import gui
@@ -1086,7 +1111,8 @@ def display_private_key(app, parent_window=None):
     
     # Add window attributes to keep it on top
     confirm_window.attributes("-topmost", True)
-    confirm_window.resizable(False, False)
+    # Enable resizing
+    confirm_window.resizable(True, True)
     
     # Container frame
     frame = ttk.Frame(confirm_window, style="TFrame", padding=20)
@@ -1107,7 +1133,7 @@ def display_private_key(app, parent_window=None):
     security_frame = tk.Frame(frame, bg=security_bg, padx=10, pady=10, bd=0, highlightthickness=0)
     security_frame.pack(fill=tk.X, pady=(0, 15))
     
-    security_text = "Never share your private key or enter it on any website, even if they claim to be Autonomi. We will never ask for your private key."
+    security_text = "Never share your private key or enter it on any website, even if they claim to be Autonomi."
     tk.Label(security_frame, text=security_text, wraplength=380, 
             fg=security_fg,
             bg=security_bg,
@@ -1176,7 +1202,9 @@ def _show_private_key(app, private_key, parent_window=None):
     """Displays the private key in a secure dialog."""
     key_window = tk.Toplevel(app.root)
     key_window.title("Private Key")
-    key_window.geometry("550x580")  # Further increased height to ensure all content is visible
+    # Removed fixed geometry
+    # key_window.geometry("550x580")  # Further increased height to ensure all content is visible
+    key_window.minsize(550, 580) # Set min size
     
     # Use proper theme colors
     import gui
@@ -1189,7 +1217,8 @@ def _show_private_key(app, private_key, parent_window=None):
     key_window.grab_set()
     key_window.lift() 
     key_window.focus_force() 
-    key_window.resizable(False, False)
+    # Enable resizing
+    key_window.resizable(True, True)
     
     # Add window attributes to keep it on top
     key_window.attributes("-topmost", True)
@@ -1333,7 +1362,9 @@ def show_styled_error(app, title, message, parent=None):
     # Create error dialog
     error_window = tk.Toplevel(parent if parent else app.root)
     error_window.title(title)
-    error_window.geometry("400x200")
+    # Removed fixed geometry
+    # error_window.geometry("400x200")
+    error_window.minsize(400, 200) # Set min size
     error_window.configure(bg=bg_color)
     
     # Ensure it's on top and has focus
@@ -1342,7 +1373,8 @@ def show_styled_error(app, title, message, parent=None):
     error_window.grab_set()
     error_window.lift()
     error_window.focus_force()
-    error_window.resizable(False, False)
+    # Enable resizing
+    error_window.resizable(True, True)
     
     # Create main frame
     frame = tk.Frame(error_window, bg=bg_color, padx=20, pady=20)

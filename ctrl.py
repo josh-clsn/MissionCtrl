@@ -58,7 +58,7 @@ class TestApp:
         # Instance variables
         self.client = None
         self.wallet = None
-        self.is_public_var = tk.BooleanVar(value=True)
+        self.is_public_var = tk.BooleanVar(value=False)
         self.is_private_var = tk.BooleanVar(value=False)
         self.perform_cost_calc_var = tk.BooleanVar(value=True)
         self.loop = None
@@ -107,9 +107,8 @@ class TestApp:
         # Initial user consent for fund risk - styled warning
         warning_window = Toplevel(self.root)
         warning_window.title("Warning")
-        warning_window.geometry("450x250")
         warning_window.configure(bg=COLORS["bg_light"])
-        warning_window.resizable(False, False)
+        warning_window.resizable(True, True)
         warning_window.grab_set()
         
         warning_frame = ttk.Frame(warning_window, style="TFrame", padding=20)
@@ -482,7 +481,7 @@ class TestApp:
         if hasattr(self, 'ant_price_label'):
             if self.ant_price_usd <= 0:
                 ant_price_text = "Loading..."
-                ant_color = COLORS["text_secondary"]
+                ant_color = gui.CURRENT_COLORS["text_secondary"]
             else:
                 if self.ant_price_usd < 1:
                     ant_price_text = f"${self.ant_price_usd:.4f}"
@@ -490,13 +489,13 @@ class TestApp:
                     ant_price_text = f"${self.ant_price_usd:.2f}"
                 
                 # Set ANT color based on price movement
-                ant_color = COLORS["text_secondary"]
+                ant_color = gui.CURRENT_COLORS["text_secondary"]
                 if previous_ant_price > 0:
                     if self.ant_price_usd > previous_ant_price:
-                        ant_color = COLORS["success"]  # Green for price increase
+                        ant_color = gui.CURRENT_COLORS["success"]
                         self.logger.info("ANT price increased - setting green")
                     elif self.ant_price_usd < previous_ant_price:
-                        ant_color = COLORS["error"]    # Red for price decrease
+                        ant_color = gui.CURRENT_COLORS["error"]
                         self.logger.info("ANT price decreased - setting red")
             
             # Update ANT label
@@ -506,7 +505,7 @@ class TestApp:
             # Format ETH price for display
             if self.eth_price_usd <= 0:
                 eth_price_text = "Loading..."
-                eth_color = COLORS["text_secondary"]
+                eth_color = gui.CURRENT_COLORS["text_secondary"]
             else:
                 eth_price_text = f"${self.eth_price_usd:.2f}"
                 
@@ -516,25 +515,25 @@ class TestApp:
                     c_eth = float(self.eth_price_usd)
                     
                     # Set ETH color based on price movement
-                    eth_color = COLORS["text_secondary"]
+                    eth_color = gui.CURRENT_COLORS["text_secondary"]
                     
                     # Handle case when previous price is 0
                     if p_eth == 0 and c_eth > 0:
-                        eth_color = COLORS["success"]
+                        eth_color = gui.CURRENT_COLORS["success"]
                         self.logger.info(f"ETH price increased from zero ({c_eth} > 0) - setting green")
                     elif p_eth > 0:
                         if c_eth > p_eth:
-                            eth_color = COLORS["success"]
+                            eth_color = gui.CURRENT_COLORS["success"]
                             self.logger.info(f"ETH price increased ({c_eth} > {p_eth}) - setting green")
                         elif c_eth < p_eth:
-                            eth_color = COLORS["error"]
+                            eth_color = gui.CURRENT_COLORS["error"]
                             self.logger.info(f"ETH price decreased ({c_eth} < {p_eth}) - setting red")
                         else:
                             self.logger.info(f"ETH price unchanged ({c_eth} = {p_eth})")
                 except (ValueError, TypeError) as e:
                     self.logger.error(f"Error comparing ETH prices: {e}")
 
-                    eth_color = COLORS["text_secondary"]
+                    eth_color = gui.CURRENT_COLORS["text_secondary"]
             
             self.eth_price_label.config(text=eth_price_text, foreground=eth_color)
             self.logger.info(f"ETH label updated with text: {eth_price_text}, color: {eth_color}")
@@ -560,12 +559,12 @@ class TestApp:
                     
                     # Time stamp
                     ttk.Label(change_frame, text=time_str, width=10,
-                           font=("Inter", 9), foreground=COLORS["text_secondary"]).pack(side=tk.LEFT)
+                           font=("Inter", 9), foreground=gui.CURRENT_COLORS["text_secondary"]).pack(side=tk.LEFT)
                     
                     # ANT change
                     if record['ant_change'] != 0:
                         sign = "+" if record['ant_change'] > 0 else ""
-                        color = COLORS["success"] if record['ant_change'] > 0 else COLORS["error"]
+                        color = gui.CURRENT_COLORS["success"] if record['ant_change'] > 0 else gui.CURRENT_COLORS["error"]
                         
                         # Format very small numbers with fixed precision
                         ant_change_display = f"{record['ant_change']:.12f}" if abs(record['ant_change']) < 0.0001 else f"{record['ant_change']:.8f}"
@@ -579,7 +578,7 @@ class TestApp:
                     # ETH change
                     if record['eth_change'] != 0:
                         sign = "+" if record['eth_change'] > 0 else ""
-                        color = COLORS["success"] if record['eth_change'] > 0 else COLORS["error"]
+                        color = gui.CURRENT_COLORS["success"] if record['eth_change'] > 0 else gui.CURRENT_COLORS["error"]
                         
                         eth_change_display = f"{record['eth_change']:.12f}" if abs(record['eth_change']) < 0.0001 else f"{record['eth_change']:.8f}"
                         eth_usd_change_display = f"{record['eth_usd_change']:.12f}" if abs(record['eth_usd_change']) < 0.0001 else f"{record['eth_usd_change']:.6f}"
@@ -621,11 +620,10 @@ class TestApp:
         else:
             choice_window = Toplevel(self.root)
             choice_window.title("Upload Type")
-            choice_window.geometry("300x200")
             choice_window.transient(self.root)
             choice_window.grab_set()
             choice_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
-            choice_window.resizable(False, False)
+            choice_window.resizable(True, True)
 
             main_frame = ttk.Frame(choice_window, style="TFrame", padding=20)
             main_frame.pack(fill=tk.BOTH, expand=True)
@@ -980,12 +978,10 @@ class TestApp:
     def show_wallet_options(self):
         wallet_window = Toplevel(self.root)
         wallet_window.title("Wallet Options")
-        wallet_window.geometry("400x500")
         wallet_window.minsize(400, 500)
-        wallet_window.resizable(False, False)
+        wallet_window.resizable(True, True)
         wallet_window.transient(self.root)
         wallet_window.grab_set()
-        wallet_window.configure(bg=COLORS["bg_light"])
         
         # Main container with padding
         main_frame = ttk.Frame(wallet_window, style="TFrame", padding=20)

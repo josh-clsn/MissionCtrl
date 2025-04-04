@@ -8,6 +8,11 @@ import logging
 import asyncio
 import subprocess
 from pathlib import Path
+import platform
+import base64
+import math
+import magic  # Library for MIME type detection
+import gui # Add gui import
 
 logger = logging.getLogger("MissionCtrl")
 
@@ -228,7 +233,11 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     view_window.geometry("800x600")
     view_window.minsize(800, 600)
     view_window.resizable(True, True)
-    view_window.configure(bg=COLORS["bg_light"])
+    view_window.configure(bg=gui.CURRENT_COLORS["bg_light"]) # Use gui.CURRENT_COLORS
+
+    # Apply theme if dark mode is enabled
+    if hasattr(app, 'is_dark_mode') and app.is_dark_mode:
+        gui.apply_theme_to_toplevel(view_window, True)
 
     main_frame = ttk.Frame(view_window, style="TFrame", padding="20")
     main_frame.pack(fill=tk.BOTH, expand=True)
@@ -250,12 +259,12 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
         
     ttk.Label(header_frame, text=title_text, 
             font=("Inter", 16, "bold"), 
-            foreground=COLORS["accent_primary"]).pack(anchor="w")
+            foreground=gui.CURRENT_COLORS["accent_primary"]).pack(anchor="w") # Use gui.CURRENT_COLORS
 
     content_frame = ttk.Frame(main_frame, style="Card.TFrame", padding="20")
     content_frame.pack(fill=tk.BOTH, expand=True)
 
-    canvas = tk.Canvas(content_frame, bg=COLORS["bg_light"], 
+    canvas = tk.Canvas(content_frame, bg=gui.CURRENT_COLORS["bg_light"], # Use gui.CURRENT_COLORS
                      bd=0, highlightthickness=0)
     scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas, style="TFrame")
@@ -272,7 +281,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
         file_list = list(archive.files())
         if not file_list:
             ttk.Label(scrollable_frame, text="No files found in archive.", 
-                    foreground=COLORS["text_secondary"]).pack(pady=10)
+                    foreground=gui.CURRENT_COLORS["text_secondary"]).pack(pady=10) # Use gui.CURRENT_COLORS
         else:
             for path, metadata in file_list:
                 item_frame = ttk.Frame(scrollable_frame, style="TFrame")
@@ -293,7 +302,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                 ttk.Label(item_frame, text=f"{file_icon}{path}", 
                         font=("Inter", 11)).pack(side=tk.LEFT, padx=5)
                 ttk.Label(item_frame, text=f"{metadata.size} bytes", 
-                        foreground=COLORS["text_secondary"]).pack(side=tk.RIGHT, padx=5)
+                        foreground=gui.CURRENT_COLORS["text_secondary"]).pack(side=tk.RIGHT, padx=5) # Use gui.CURRENT_COLORS
     
     elif is_private:
         detect_and_display_content(data, scrollable_frame)
@@ -305,7 +314,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
             file_list = list(archive.files()) if archive else []
             if not file_list:
                 ttk.Label(scrollable_frame, text="No files found in archive.", 
-                        foreground=COLORS["text_secondary"]).pack(pady=10)
+                        foreground=gui.CURRENT_COLORS["text_secondary"]).pack(pady=10) # Use gui.CURRENT_COLORS
             else:
                 chunk_addresses = list(archive.addresses()) if archive else []
                 file_names = [item[0] for item in file_list]
@@ -332,7 +341,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                     ttk.Label(info_frame, text=f"{file_icon}{name}", 
                             font=("Inter", 11)).pack(anchor="w")
                     ttk.Label(info_frame, text=f"Address: {addr}", 
-                            foreground=COLORS["text_secondary"], 
+                            foreground=gui.CURRENT_COLORS["text_secondary"], # Use gui.CURRENT_COLORS
                             font=("Inter", 9)).pack(anchor="w")
                     
                     action_frame = ttk.Frame(item_frame, style="TFrame")
@@ -492,6 +501,12 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
 
     view_window.update_idletasks()
 
+    # Ensure window is brought to the front
+    view_window.lift()
+    view_window.focus_force()
+    view_window.attributes("-topmost", True)
+    view_window.update_idletasks()
+
 def view_file(app, addr, name, button, loading_label):
     """Async retrieval and display of a single public file."""
     if not hasattr(button, "is_busy"):
@@ -510,6 +525,11 @@ def view_file(app, addr, name, button, loading_label):
             file_data = await app.client.data_get_public(addr)
             sub_window = tk.Toplevel(app.root)
             sub_window.title(f"View {name}")
+
+            # Apply theme if dark mode is enabled
+            if hasattr(app, 'is_dark_mode') and app.is_dark_mode:
+                gui.apply_theme_to_toplevel(sub_window, True)
+            
             sub_frame = ttk.Frame(sub_window)
             sub_frame.pack(fill=tk.BOTH, expand=True)
             detect_and_display_content(file_data, sub_frame, name)
