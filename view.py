@@ -549,9 +549,6 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     view_window.attributes("-topmost", True)
     view_window.update_idletasks()
 
-    # Start playing immediately
-    play_music()
-
 def view_file(app, addr, name, button, loading_label):
     """Async retrieval and display of a single public file."""
     if not hasattr(button, "is_busy"):
