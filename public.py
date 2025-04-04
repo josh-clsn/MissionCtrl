@@ -280,37 +280,45 @@ def manage_public_files(app):
             widget.destroy()
         for widget in archives_inner_frame.winfo_children():
             widget.destroy()
+            
+        # Configure grid columns for expansion (column 1 for address)
+        files_inner_frame.columnconfigure(1, weight=1)
+        archives_inner_frame.columnconfigure(1, weight=1)
 
         check_vars.clear()
         archive_vars.clear()
+        row_index = 0
         for filename, chunk_addr in app.uploaded_files:
             if query in filename.lower() or query in chunk_addr.lower():
                 var = tk.BooleanVar(master=app.root, value=False)
                 check_vars.append((var, filename, chunk_addr))
-                frame = ttk.Frame(files_inner_frame)
-                frame.pack(anchor="w", padx=5, pady=2)
-                chk = ttk.Checkbutton(frame, text=f"{filename} - ", variable=var)
-                chk.pack(side=tk.LEFT)
-                addr_entry = ttk.Entry(frame, width=80)
+                # Use grid layout
+                chk = ttk.Checkbutton(files_inner_frame, text=f"{filename} - ", variable=var)
+                chk.grid(row=row_index, column=0, sticky="w", padx=(5, 0), pady=2)
+                
+                addr_entry = ttk.Entry(files_inner_frame, width=80) # Set width to 80
                 addr_entry.insert(0, chunk_addr)
                 addr_entry.config(state="readonly")
-                addr_entry.pack(side=tk.LEFT)
+                addr_entry.grid(row=row_index, column=1, sticky="ew", padx=(0, 5), pady=2)
                 add_context_menu(addr_entry)
+                row_index += 1
 
+        row_index = 0 # Reset row index for archives
         public_archives = [(addr, name) for addr, name, is_private in app.local_archives if not is_private]
         for addr, nickname in public_archives:
             if query in nickname.lower() or query in addr.lower():
                 var = tk.BooleanVar(master=app.root, value=False)
                 archive_vars.append((var, addr, nickname))
-                frame = ttk.Frame(archives_inner_frame)
-                frame.pack(anchor="w", padx=5, pady=2)
-                chk = ttk.Checkbutton(frame, text=f"{nickname} - ", variable=var)
-                chk.pack(side=tk.LEFT)
-                addr_entry = ttk.Entry(frame, width=80)
+                # Use grid layout
+                chk = ttk.Checkbutton(archives_inner_frame, text=f"{nickname} - ", variable=var)
+                chk.grid(row=row_index, column=0, sticky="w", padx=(5, 0), pady=2)
+                
+                addr_entry = ttk.Entry(archives_inner_frame, width=80) # Set width to 80
                 addr_entry.insert(0, addr)
                 addr_entry.config(state="readonly")
-                addr_entry.pack(side=tk.LEFT)
+                addr_entry.grid(row=row_index, column=1, sticky="ew", padx=(0, 5), pady=2)
                 add_context_menu(addr_entry)
+                row_index += 1
 
         files_inner_frame.update_idletasks()
         files_canvas.configure(scrollregion=files_canvas.bbox("all"))
@@ -553,27 +561,41 @@ def display_public_files(app, parent_frame):
     
     # Create scrollable frames for files and archives (Pack later)
     files_frame = ttk.LabelFrame(parent_frame, text="Uploaded Files", padding=5)
-    files_canvas = tk.Canvas(files_frame, bg=CURRENT_COLORS["bg_secondary"])
-    files_scrollbar = ttk.Scrollbar(files_frame, orient="vertical", command=files_canvas.yview)
+    files_canvas = tk.Canvas(files_frame, bg=CURRENT_COLORS["bg_secondary"], bd=0, highlightthickness=0)
+    files_v_scrollbar = ttk.Scrollbar(files_frame, orient="vertical", command=files_canvas.yview)
     files_inner_frame = ttk.Frame(files_canvas)
-    files_canvas.configure(yscrollcommand=files_scrollbar.set)
+    files_canvas.configure(yscrollcommand=files_v_scrollbar.set)
     
-    files_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    files_v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     files_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    files_canvas.create_window((0, 0), window=files_inner_frame, anchor="nw")
+    canvas_window_files = files_canvas.create_window((0, 0), window=files_inner_frame, anchor="nw")
+    
+    # Update scrollregion when inner frame size changes
+    def on_files_configure(event):
+        files_canvas.configure(scrollregion=files_canvas.bbox("all"))
+        # Adjust canvas window width to prevent horizontal scroll unless needed
+        # files_canvas.itemconfig(canvas_window_files, width=event.width)
+    files_inner_frame.bind("<Configure>", on_files_configure)
     
     check_vars = []
     
     archives_frame = ttk.LabelFrame(parent_frame, text="Archives", padding=5)
-    archives_canvas = tk.Canvas(archives_frame, bg=CURRENT_COLORS["bg_secondary"])
-    archives_scrollbar = ttk.Scrollbar(archives_frame, orient="vertical", command=archives_canvas.yview)
+    archives_canvas = tk.Canvas(archives_frame, bg=CURRENT_COLORS["bg_secondary"], bd=0, highlightthickness=0)
+    archives_v_scrollbar = ttk.Scrollbar(archives_frame, orient="vertical", command=archives_canvas.yview)
     archives_inner_frame = ttk.Frame(archives_canvas)
-    archives_canvas.configure(yscrollcommand=archives_scrollbar.set)
+    archives_canvas.configure(yscrollcommand=archives_v_scrollbar.set)
     
-    archives_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    archives_v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     archives_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    archives_canvas.create_window((0, 0), window=archives_inner_frame, anchor="nw")
-    
+    canvas_window_archives = archives_canvas.create_window((0, 0), window=archives_inner_frame, anchor="nw")
+
+    # Update scrollregion when inner frame size changes
+    def on_archives_configure(event):
+        archives_canvas.configure(scrollregion=archives_canvas.bbox("all"))
+        # Adjust canvas window width to prevent horizontal scroll unless needed
+        # archives_canvas.itemconfig(canvas_window_archives, width=event.width)
+    archives_inner_frame.bind("<Configure>", on_archives_configure)
+
     archive_vars = []
     
     # --- Pack elements in correct order --- 
@@ -588,43 +610,52 @@ def display_public_files(app, parent_frame):
             widget.destroy()
         for widget in archives_inner_frame.winfo_children():
             widget.destroy()
+            
+        # Configure grid columns for expansion (column 1 for address)
+        files_inner_frame.columnconfigure(1, weight=1)
+        archives_inner_frame.columnconfigure(1, weight=1)
 
         check_vars.clear()
         archive_vars.clear()
+        row_index = 0
         for filename, chunk_addr in app.uploaded_files:
             if query in filename.lower() or query in chunk_addr.lower():
                 var = tk.BooleanVar(master=app.root, value=False)
                 check_vars.append((var, filename, chunk_addr))
-                frame = ttk.Frame(files_inner_frame)
-                frame.pack(anchor="w", padx=5, pady=2)
-                chk = ttk.Checkbutton(frame, text=f"{filename} - ", variable=var)
-                chk.pack(side=tk.LEFT)
-                addr_entry = ttk.Entry(frame, width=40) 
+                # Use grid layout
+                chk = ttk.Checkbutton(files_inner_frame, text=f"{filename} - ", variable=var)
+                chk.grid(row=row_index, column=0, sticky="w", padx=(5, 0), pady=2)
+                
+                addr_entry = ttk.Entry(files_inner_frame, width=80) # Set width to 80
                 addr_entry.insert(0, chunk_addr)
                 addr_entry.config(state="readonly")
-                addr_entry.pack(side=tk.LEFT)
+                addr_entry.grid(row=row_index, column=1, sticky="ew", padx=(0, 5), pady=2)
                 add_context_menu(addr_entry)
+                row_index += 1
 
+        row_index = 0 # Reset row index for archives
         public_archives = [(addr, name) for addr, name, is_private in app.local_archives if not is_private]
         for addr, nickname in public_archives:
             if query in nickname.lower() or query in addr.lower():
                 var = tk.BooleanVar(master=app.root, value=False)
                 archive_vars.append((var, addr, nickname))
-                frame = ttk.Frame(archives_inner_frame)
-                frame.pack(anchor="w", padx=5, pady=2)
-                chk = ttk.Checkbutton(frame, text=f"{nickname} - ", variable=var)
-                chk.pack(side=tk.LEFT)
-                addr_entry = ttk.Entry(frame, width=40)
+                # Use grid layout
+                chk = ttk.Checkbutton(archives_inner_frame, text=f"{nickname} - ", variable=var)
+                chk.grid(row=row_index, column=0, sticky="w", padx=(5, 0), pady=2)
+                
+                addr_entry = ttk.Entry(archives_inner_frame, width=80) # Set width to 80
                 addr_entry.insert(0, addr)
                 addr_entry.config(state="readonly")
-                addr_entry.pack(side=tk.LEFT)
+                addr_entry.grid(row=row_index, column=1, sticky="ew", padx=(0, 5), pady=2)
                 add_context_menu(addr_entry)
+                row_index += 1
 
-        files_inner_frame.update_idletasks()
-        files_canvas.configure(scrollregion=files_canvas.bbox("all"))
-        archives_inner_frame.update_idletasks()
-        archives_canvas.configure(scrollregion=archives_canvas.bbox("all"))
-    
+        # No need to update scrollregion manually here, the bind does it
+        # files_inner_frame.update_idletasks()
+        # files_canvas.configure(scrollregion=files_canvas.bbox("all"))
+        # archives_inner_frame.update_idletasks()
+        # archives_canvas.configure(scrollregion=archives_canvas.bbox("all"))
+
     def filter_files():
         query = search_entry.get().lower()
         refresh_content(query)
