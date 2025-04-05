@@ -121,10 +121,10 @@ def continue_upload():
 def manage_private_files(app):
     # UI for managing private files
     manage_window = tk.Toplevel(app.root)
-    manage_window.title("Store Private Data Files - Mission Ctrl")
-    manage_window.geometry("600x700")
+    manage_window.title("Manage Private Files")
     manage_window.resizable(True, True)
-    manage_window.configure(bg="#FFFFFF")
+    manage_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
+    manage_window.transient(app.root)
 
     search_frame = ttk.Frame(manage_window)
     search_frame.pack(fill=tk.X, padx=10, pady=5)

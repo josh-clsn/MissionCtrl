@@ -125,10 +125,10 @@ def get_wallet_password(app, create=False):
     pwd_window.focus_force()
     pwd_window.grab_set()
     
-    # Center window
-    pwd_window.update_idletasks()
-    width = pwd_window.winfo_width()
-    height = pwd_window.winfo_height()
+    # Center window AFTER packing widgets (or use update_idletasks)
+    pwd_window.update_idletasks() # Ensure dimensions are calculated
+    width = pwd_window.winfo_reqwidth() # Get required width
+    height = pwd_window.winfo_reqheight() # Get required height
     x = (pwd_window.winfo_screenwidth() // 2) - (width // 2)
     y = (pwd_window.winfo_screenheight() // 2) - (height // 2)
     pwd_window.geometry('{}x{}+{}+{}'.format(width, height, x, y))
@@ -441,6 +441,8 @@ def import_wallet(app, wallet_window=None):
         warning_window.lift()  
         warning_window.focus_force()  
         warning_window.attributes("-topmost", True) 
+        # Ensure resizable
+        warning_window.resizable(True, True)
         
         # Container frame
         frame = ttk.Frame(warning_window, style="TFrame", padding=20)
@@ -487,8 +489,9 @@ def import_wallet(app, wallet_window=None):
     # Main import window
     import_window = tk.Toplevel(app.root)
     import_window.title("Import Wallet")
-    import_window.geometry("460x580")  # Increased height for password confirmation field
-    import_window.minsize(450, 580)
+    # Removed fixed geometry and minsize
+    # import_window.geometry("460x580")  # Increased height for password confirmation field
+    # import_window.minsize(450, 580)
     
     # Use proper theme colors
     import gui
@@ -501,6 +504,8 @@ def import_wallet(app, wallet_window=None):
     import_window.lift() 
     import_window.focus_force() 
     import_window.attributes("-topmost", True) 
+    # Ensure resizable
+    import_window.resizable(True, True)
     
     # Header with proper colors
     header_frame = tk.Frame(import_window, bg=bg_color, padx=20, pady=20)
@@ -1442,6 +1447,8 @@ def send_funds(app, wallet_window=None):
     send_window.lift()
     send_window.focus_force()
     send_window.attributes("-topmost", True)
+    # Ensure resizable
+    send_window.resizable(True, True)
     
     # Main content container - force a specific layout
     main_container = tk.Frame(send_window, bg="#222222", padx=20, pady=20)

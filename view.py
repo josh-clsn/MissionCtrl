@@ -257,8 +257,6 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     """Displays retrieved data or archive contents in a scrollable window."""
     view_window = tk.Toplevel(app.root)
     view_window.title("Retrieved Data - Mission Ctrl")
-    view_window.geometry("800x600")
-    view_window.minsize(800, 600)
     view_window.resizable(True, True)
     view_window.configure(bg=gui.CURRENT_COLORS["bg_light"]) # Use gui.CURRENT_COLORS
 
@@ -634,8 +632,7 @@ def open_audio_player(app, audio_data, filename):
     
     player_window = tk.Toplevel(app.root)
     player_window.title(f"Play - {filename}")
-    player_window.geometry("350x150")
-    player_window.resizable(False, False)
+    player_window.resizable(True, True)
     player_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
     player_window.transient(app.root)
     player_window.grab_set()

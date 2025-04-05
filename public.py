@@ -228,10 +228,10 @@ async def upload_public_directory(app, dir_path):
 def manage_public_files(app):
     # UI for managing public files and archives
     manage_window = tk.Toplevel(app.root)
-    manage_window.title("Manage Public Files - Mission Ctrl")
-    manage_window.geometry("600x730")
+    manage_window.title("Manage Files")
     manage_window.resizable(True, True)
-    manage_window.configure(bg="#FFFFFF")
+    manage_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
+    manage_window.transient(app.root)
 
     search_frame = ttk.Frame(manage_window)
     search_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -334,8 +334,11 @@ def manage_public_files(app):
             return
 
         archive_window = tk.Toplevel(manage_window)
-        archive_window.title("Add to Archive - Mission Ctrl")
-        archive_window.geometry("400x250")
+        archive_window.title("Archive File")
+        archive_window.resizable(True, True)
+        archive_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
+        archive_window.transient(manage_window)
+        archive_window.grab_set()
 
         ttk.Label(archive_window, text="Nickname for New Archive:").pack(pady=5)
         nickname_entry = ttk.Entry(archive_window)
@@ -438,8 +441,10 @@ def manage_public_files(app):
             return
 
         append_window = tk.Toplevel(manage_window)
-        append_window.title("Append to Archive - Mission Ctrl")
-        append_window.geometry("400x200")
+        append_window.title("Append to File")
+        append_window.resizable(True, True)
+        append_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
+        append_window.transient(manage_window)
 
         ttk.Label(append_window, text="Select Archive to Append To:").pack(pady=5)
         archive_combo = ttk.Combobox(append_window, values=[f"{n} - {a}" for a, n in public_archives])
@@ -669,8 +674,9 @@ def display_public_files(app, parent_frame):
             return
 
         archive_window = tk.Toplevel(app.root)
-        archive_window.title("Add to Archive - Mission Ctrl")
-        archive_window.geometry("400x250")
+        archive_window.title("Archive File")
+        archive_window.resizable(True, True)
+        archive_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
         archive_window.transient(app.root)
         archive_window.grab_set()
 

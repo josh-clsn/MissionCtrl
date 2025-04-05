@@ -231,14 +231,12 @@ class TestApp:
     def show_wallet_setup_wizard(self):
         # Wallet setup UI for new users
         self.logger.info("Showing wallet setup wizard")
-        wizard_window = Toplevel(self.root)
-        wizard_window.title("Welcome to Mission Ctrl - Wallet Setup")
-        wizard_window.geometry("500x400")
-        wizard_window.minsize(550, 500)
-        wizard_window.resizable(False, False)
+        wizard_window = tk.Toplevel(self.root)
+        wizard_window.title("Setup Wizard")
+        wizard_window.resizable(True, True)
         wizard_window.transient(self.root)
         wizard_window.grab_set()
-        wizard_window.configure(bg=COLORS["bg_light"])
+        wizard_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
         
         header_frame = ttk.Frame(wizard_window, style="TFrame", padding="30 30 30 20")
         header_frame.pack(fill=tk.X)
@@ -976,10 +974,10 @@ class TestApp:
         )
 
     def show_wallet_options(self):
-        wallet_window = Toplevel(self.root)
-        wallet_window.title("Wallet Options")
-        wallet_window.minsize(400, 500)
+        wallet_window = tk.Toplevel(self.root)
+        wallet_window.title("Wallet Management")
         wallet_window.resizable(True, True)
+        wallet_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
         wallet_window.transient(self.root)
         wallet_window.grab_set()
         
@@ -1023,20 +1021,15 @@ class TestApp:
                 self.root.clipboard_append(self.wallet.address())
                 
                 # Create custom top-level dialog that stays on top
-                success_dialog = Toplevel(self.root)
-                success_dialog.title("Success")
-                success_dialog.geometry("300x300")
-                success_dialog.attributes("-topmost", True)
+                success_dialog = tk.Toplevel(self.root)
+                success_dialog.title("Setup Complete")
+                success_dialog.resizable(True, True)
+                success_dialog.configure(bg=gui.CURRENT_COLORS["bg_light"])
                 success_dialog.transient(self.root)
-                success_dialog.grab_set() 
-                success_dialog.focus_force() 
-                success_dialog.configure(bg=COLORS["bg_light"])
-                
-                message_frame = ttk.Frame(success_dialog, style="TFrame", padding=20)
-                message_frame.pack(fill=tk.BOTH, expand=True)
+                success_dialog.grab_set()
                 
                 # Centered container to hold content
-                center_frame = ttk.Frame(message_frame, style="TFrame")
+                center_frame = ttk.Frame(success_dialog, style="TFrame")
                 center_frame.pack(expand=True, fill=tk.BOTH)
                 
                 # Light bulb icon + message
@@ -1048,7 +1041,7 @@ class TestApp:
                 ttk.Separator(center_frame, orient="horizontal").pack(fill=tk.X, pady=15)
                 
                 # OK button in its own frame at the bottom
-                button_frame = ttk.Frame(message_frame, style="TFrame")
+                button_frame = ttk.Frame(success_dialog, style="TFrame")
                 button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=15)
                 
                 ok_btn = ttk.Button(button_frame, text="OK", 
@@ -1059,8 +1052,8 @@ class TestApp:
                 
                 # Center the dialog on screen
                 success_dialog.update_idletasks()
-                width = success_dialog.winfo_width()
-                height = success_dialog.winfo_height()
+                width = success_dialog.winfo_reqwidth()
+                height = success_dialog.winfo_reqheight()
                 x = (success_dialog.winfo_screenwidth() // 2) - (width // 2)
                 y = (success_dialog.winfo_screenheight() // 2) - (height // 2)
                 success_dialog.geometry(f"{width}x{height}+{x}+{y}")
