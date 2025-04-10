@@ -296,7 +296,7 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     elif is_private:
         title_text = "Retrieved Private Data"
     elif is_single_chunk:
-        title_text = "Retrieved Single Public Chunk"
+        title_text = "Retrieved Data"
     else:
         title_text = "Retrieved Public Archive"
         
