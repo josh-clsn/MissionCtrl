@@ -263,11 +263,24 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     view_window.title("Retrieved Data - Mission Ctrl")
     view_window.resizable(True, True)
     view_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
-    view_window.geometry("1100x800")
+    view_window.geometry("1300x900")
 
     # Apply theme if dark mode is enabled
     if hasattr(app, 'is_dark_mode') and app.is_dark_mode:
         gui.apply_theme_to_toplevel(view_window, True)
+    
+    # Set window to remain on top until user interaction
+    view_window.attributes("-topmost", True)
+    view_window.grab_set()
+    
+    # Remove topmost after a short delay (allows user to see and interact with window)
+    def remove_topmost():
+        view_window.attributes("-topmost", False)
+        # Keep window focused
+        view_window.focus_force()
+    
+    # Schedule removal of topmost after 1.5 seconds
+    view_window.after(1500, remove_topmost)
 
     main_frame = ttk.Frame(view_window, style="TFrame", padding="20")
     main_frame.pack(fill=tk.BOTH, expand=True)
@@ -515,13 +528,11 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
                          command=view_window.destroy, style="Secondary.TButton")
     close_button.pack(side=tk.RIGHT, padx=(0, 10))
 
+    # Update UI before showing window
     view_window.update_idletasks()
-
-    # Ensure window is brought to the front
-    view_window.lift()
+    
+    # Final focus - this is sufficient since we're using the delayed topmost removal pattern
     view_window.focus_force()
-    view_window.attributes("-topmost", True)
-    view_window.update_idletasks()
 
 def view_file(app, addr, name, button, loading_label):
     """Async retrieval and display of a single public file."""
@@ -546,6 +557,20 @@ def view_file(app, addr, name, button, loading_label):
             # Apply theme if dark mode is enabled
             if hasattr(app, 'is_dark_mode') and app.is_dark_mode:
                 gui.apply_theme_to_toplevel(sub_window, True)
+            
+            # Set window to remain on top until user interaction
+            sub_window.attributes("-topmost", True)
+            sub_window.focus_force()
+            sub_window.grab_set()
+            
+            # Remove topmost after a short delay
+            def remove_topmost():
+                sub_window.attributes("-topmost", False)
+                # Keep window focused
+                sub_window.focus_force()
+            
+            # Schedule removal of topmost after 1.5 seconds
+            sub_window.after(1500, remove_topmost)
             
             main_frame = ttk.Frame(sub_window, padding=10)
             main_frame.pack(fill=tk.BOTH, expand=True)
@@ -665,11 +690,19 @@ def open_audio_player(app, audio_data, filename):
     if hasattr(app, 'is_dark_mode') and app.is_dark_mode:
         gui.apply_theme_to_toplevel(player_window, True)
         
-    # Ensure window is brought to the front
+    # Ensure window is brought to the front and stays there temporarily
     player_window.lift()
     player_window.focus_force()
     player_window.attributes("-topmost", True)
-    player_window.update_idletasks()
+    
+    # Remove topmost after a short delay
+    def remove_topmost():
+        player_window.attributes("-topmost", False)
+        # Keep window focused
+        player_window.focus_force()
+    
+    # Schedule removal of topmost after 1.5 seconds
+    player_window.after(1500, remove_topmost)
         
     playback_thread = None
     paused = False

@@ -5,6 +5,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import logging
 from autonomi_client import PublicArchive, Metadata
+import view
+import gui
 
 logger = logging.getLogger("MissionCtrl")
 
@@ -549,21 +551,28 @@ def display_public_files(app, parent_frame):
     from tkinter import ttk, messagebox
     from gui import add_context_menu, CURRENT_COLORS
     
-    # Create search frame (Pack later)
-    search_frame = ttk.Frame(parent_frame)
-    ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
-    search_entry = ttk.Entry(search_frame)
+    # Create search frame with improved styling
+    search_frame = ttk.Frame(parent_frame, style="TFrame", padding=(0, 5, 0, 15))
+    search_label = ttk.Label(search_frame, text="Search:", font=("Inter", 11))
+    search_label.pack(side=tk.LEFT, padx=(0, 10))
+    
+    search_entry = ttk.Entry(search_frame, width=40)
     search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
     add_context_menu(search_entry)
     
-    # Create buttons frame (Pack later)
-    buttons_frame = ttk.Frame(parent_frame)
+    # Create buttons frame
+    buttons_frame = ttk.Frame(parent_frame, style="TFrame", padding=(0, 10))
     
-    # Create scrollable frames for files and archives (Pack later)
-    files_frame = ttk.LabelFrame(parent_frame, text="Uploaded Files", padding=5)
+    # Create scrollable frames for files and archives with better styling
+    files_frame = ttk.LabelFrame(parent_frame, text="Uploaded Files", padding=10, style="Card.TLabelframe")
+    
+    # Style the labelframe header
+    style = ttk.Style()
+    style.configure("Card.TLabelframe.Label", font=("Inter", 12, "bold"), foreground=CURRENT_COLORS["accent_primary"])
+    
     files_canvas = tk.Canvas(files_frame, bg=CURRENT_COLORS["bg_secondary"], bd=0, highlightthickness=0)
     files_v_scrollbar = ttk.Scrollbar(files_frame, orient="vertical", command=files_canvas.yview)
-    files_inner_frame = ttk.Frame(files_canvas)
+    files_inner_frame = ttk.Frame(files_canvas, style="TFrame", padding=5)
     files_canvas.configure(yscrollcommand=files_v_scrollbar.set)
     
     files_v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -573,14 +582,18 @@ def display_public_files(app, parent_frame):
     # Update scrollregion when inner frame size changes
     def on_files_configure(event):
         files_canvas.configure(scrollregion=files_canvas.bbox("all"))
+        # Make the inner frame width match the canvas width
+        files_canvas.itemconfig(canvas_window_files, width=files_canvas.winfo_width())
+    
     files_inner_frame.bind("<Configure>", on_files_configure)
+    files_canvas.bind("<Configure>", lambda e: files_canvas.itemconfig(canvas_window_files, width=e.width))
     
     check_vars = []
     
-    archives_frame = ttk.LabelFrame(parent_frame, text="Archives", padding=5)
+    archives_frame = ttk.LabelFrame(parent_frame, text="Archives", padding=10, style="Card.TLabelframe")
     archives_canvas = tk.Canvas(archives_frame, bg=CURRENT_COLORS["bg_secondary"], bd=0, highlightthickness=0)
     archives_v_scrollbar = ttk.Scrollbar(archives_frame, orient="vertical", command=archives_canvas.yview)
-    archives_inner_frame = ttk.Frame(archives_canvas)
+    archives_inner_frame = ttk.Frame(archives_canvas, style="TFrame", padding=5)
     archives_canvas.configure(yscrollcommand=archives_v_scrollbar.set)
     
     archives_v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -589,15 +602,19 @@ def display_public_files(app, parent_frame):
 
     def on_archives_configure(event):
         archives_canvas.configure(scrollregion=archives_canvas.bbox("all"))
+        # Make the inner frame width match the canvas width
+        archives_canvas.itemconfig(canvas_window_archives, width=archives_canvas.winfo_width())
+    
     archives_inner_frame.bind("<Configure>", on_archives_configure)
+    archives_canvas.bind("<Configure>", lambda e: archives_canvas.itemconfig(canvas_window_archives, width=e.width))
 
     archive_vars = []
     
-    # --- Pack elements in correct order --- 
-    search_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+    # --- Pack elements in correct order ---
+    search_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(10, 0))
     buttons_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=10)
-    files_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=10, pady=5, expand=True)
-    archives_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=10, pady=5, expand=True)
+    files_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=10, pady=10, expand=True)
+    archives_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=10, pady=10, expand=True)
 
     def refresh_content(query=""):
         for widget in files_inner_frame.winfo_children():
@@ -605,84 +622,355 @@ def display_public_files(app, parent_frame):
         for widget in archives_inner_frame.winfo_children():
             widget.destroy()
             
-        # Configure grid columns for expansion (column 1 for address)
-        files_inner_frame.columnconfigure(1, weight=1)
-        archives_inner_frame.columnconfigure(1, weight=1)
-
         check_vars.clear()
         archive_vars.clear()
-        row_index = 0
-        for filename, chunk_addr in app.uploaded_files:
+        
+        # Display file count heading
+        visible_files = [f for f in app.uploaded_files if query in f[0].lower() or query in f[1].lower()]
+        files_frame.configure(text=f"Uploaded Files ({len(visible_files)})")
+        
+        # Display message when no files found
+        if not visible_files:
+            empty_msg = ttk.Label(files_inner_frame, 
+                                text="No files found", 
+                                font=("Inter", 11, "italic"),
+                                foreground=CURRENT_COLORS["text_secondary"])
+            empty_msg.pack(pady=20, padx=20)
+        
+        # Create cards for each file
+        for i, (filename, chunk_addr) in enumerate(visible_files):
             if query in filename.lower() or query in chunk_addr.lower():
                 var = tk.BooleanVar(master=app.root, value=False)
                 check_vars.append((var, filename, chunk_addr))
-                # Use grid layout
-                chk = ttk.Checkbutton(files_inner_frame, text=f"{filename} - ", variable=var)
-                chk.grid(row=row_index, column=0, sticky="w", padx=(5, 0), pady=2)
                 
-                addr_entry = ttk.Entry(files_inner_frame, width=80) # Set width to 80
-                addr_entry.insert(0, chunk_addr)
-                addr_entry.config(state="readonly")
-                addr_entry.grid(row=row_index, column=1, sticky="ew", padx=(0, 5), pady=2)
-                add_context_menu(addr_entry)
-                row_index += 1
+                # Create a card style frame for each file
+                card = ttk.Frame(files_inner_frame, style="FileCard.TFrame", padding=10)
+                card.pack(fill=tk.X, pady=5, padx=5)
+                
+                # Determine file type icon
+                icon = "📄"  # Default
+                if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    icon = "🖼️"
+                elif filename.lower().endswith(('.mp4', '.mov', '.avi')):
+                    icon = "🎬"
+                elif filename.lower().endswith(('.mp3', '.wav', '.ogg')):
+                    icon = "🎵"
+                elif filename.lower().endswith(('.pdf')):
+                    icon = "📕"
+                elif filename.lower().endswith(('.zip', '.tar', '.gz')):
+                    icon = "🗜️"
+                
+                # Header row with checkbox and filename
+                header = ttk.Frame(card, style="TFrame")
+                header.pack(fill=tk.X, pady=(0, 5))
+                
+                # Checkbox and file info
+                chk = ttk.Checkbutton(header, variable=var, style="TCheckbutton")
+                chk.pack(side=tk.LEFT)
+                
+                filename_label = ttk.Label(header, 
+                                        text=f"{icon} {filename}", 
+                                        font=("Inter", 11, "bold"),
+                                        foreground=CURRENT_COLORS["accent_primary"])
+                filename_label.pack(side=tk.LEFT, padx=(5, 0))
+                
+                # Address section
+                addr_frame = ttk.Frame(card, style="TFrame", padding=(20, 5))
+                addr_frame.pack(fill=tk.X)
+                
+                addr_label = ttk.Label(addr_frame, 
+                                     text="Address:", 
+                                     font=("Inter", 10),
+                                     foreground=CURRENT_COLORS["text_secondary"])
+                addr_label.pack(side=tk.LEFT)
+                
+                # Address with copy button
+                addr_container = ttk.Frame(addr_frame, style="TFrame")
+                addr_container.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+                
+                shortened_addr = f"{chunk_addr[:20]}...{chunk_addr[-8:]}"
+                addr_display = ttk.Label(addr_container, 
+                                       text=shortened_addr,
+                                       font=("Inter Mono", 10),
+                                       foreground=CURRENT_COLORS["text_secondary"])
+                addr_display.pack(side=tk.LEFT)
+                
+                # Add copy button
+                def copy_address(addr=chunk_addr):
+                    app.root.clipboard_clear()
+                    app.root.clipboard_append(addr)
+                    # Show temporary confirmation
+                    addr_display.config(text="✓ Copied!", foreground=CURRENT_COLORS["success"])
+                    addr_display.after(1500, lambda: addr_display.config(
+                        text=shortened_addr, 
+                        foreground=CURRENT_COLORS["text_secondary"]
+                    ))
+                
+                # Button container for multiple buttons
+                btn_container = ttk.Frame(addr_container, style="TFrame")
+                btn_container.pack(side=tk.RIGHT)
+                
+                # Add view button
+                view_btn = ttk.Button(btn_container, 
+                                     text="View", 
+                                     style="Small.TButton",
+                                     command=lambda f=filename, a=chunk_addr: view_file(f, a),
+                                     width=5)
+                view_btn.pack(side=tk.RIGHT, padx=(5, 0))
+                
+                copy_btn = ttk.Button(btn_container, 
+                                    text="Copy", 
+                                    style="Small.TButton",
+                                    command=lambda addr=chunk_addr: copy_address(addr),
+                                    width=5)
+                copy_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
-        row_index = 0 # Reset row index for archives
+        # Display archives
         public_archives = [(addr, name) for addr, name, is_private in app.local_archives if not is_private]
-        for addr, nickname in public_archives:
+        visible_archives = [a for a in public_archives if query in a[1].lower() or query in a[0].lower()]
+        archives_frame.configure(text=f"Archives ({len(visible_archives)})")
+        
+        # Display message when no archives found
+        if not visible_archives:
+            empty_msg = ttk.Label(archives_inner_frame, 
+                                text="No archives found", 
+                                font=("Inter", 11, "italic"),
+                                foreground=CURRENT_COLORS["text_secondary"])
+            empty_msg.pack(pady=20, padx=20)
+        
+        # Create cards for each archive
+        for addr, nickname in visible_archives:
             if query in nickname.lower() or query in addr.lower():
                 var = tk.BooleanVar(master=app.root, value=False)
                 archive_vars.append((var, addr, nickname))
-                # Use grid layout
-                chk = ttk.Checkbutton(archives_inner_frame, text=f"{nickname} - ", variable=var)
-                chk.grid(row=row_index, column=0, sticky="w", padx=(5, 0), pady=2)
                 
-                addr_entry = ttk.Entry(archives_inner_frame, width=80) # Set width to 80
-                addr_entry.insert(0, addr)
-                addr_entry.config(state="readonly")
-                addr_entry.grid(row=row_index, column=1, sticky="ew", padx=(0, 5), pady=2)
-                add_context_menu(addr_entry)
-                row_index += 1
+                # Create a card style frame for each archive
+                card = ttk.Frame(archives_inner_frame, style="ArchiveCard.TFrame", padding=10)
+                card.pack(fill=tk.X, pady=5, padx=5)
+                
+                # Header row with checkbox and nickname
+                header = ttk.Frame(card, style="TFrame")
+                header.pack(fill=tk.X, pady=(0, 5))
+                
+                chk = ttk.Checkbutton(header, variable=var, style="TCheckbutton")
+                chk.pack(side=tk.LEFT)
+                
+                nickname_label = ttk.Label(header, 
+                                         text=f"🗂️ {nickname}", 
+                                         font=("Inter", 11, "bold"),
+                                         foreground=CURRENT_COLORS["accent_tertiary"])
+                nickname_label.pack(side=tk.LEFT, padx=(5, 0))
+                
+                # Address section
+                addr_frame = ttk.Frame(card, style="TFrame", padding=(20, 5))
+                addr_frame.pack(fill=tk.X)
+                
+                addr_label = ttk.Label(addr_frame, 
+                                     text="Address:", 
+                                     font=("Inter", 10),
+                                     foreground=CURRENT_COLORS["text_secondary"])
+                addr_label.pack(side=tk.LEFT)
+                
+                # Address with copy button
+                addr_container = ttk.Frame(addr_frame, style="TFrame")
+                addr_container.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+                
+                shortened_addr = f"{addr[:20]}...{addr[-8:]}"
+                addr_display = ttk.Label(addr_container, 
+                                       text=shortened_addr,
+                                       font=("Inter Mono", 10),
+                                       foreground=CURRENT_COLORS["text_secondary"])
+                addr_display.pack(side=tk.LEFT)
+                
+                # Add copy and view buttons
+                def copy_archive_address(addr=addr):
+                    app.root.clipboard_clear()
+                    app.root.clipboard_append(addr)
+                    # Show temporary confirmation (find label in the widgets)
+                    for widget in addr_container.winfo_children():
+                        if isinstance(widget, ttk.Label):
+                            widget.config(text="✓ Copied!", foreground=CURRENT_COLORS["success"])
+                            widget.after(1500, lambda: widget.config(
+                                text=shortened_addr, 
+                                foreground=CURRENT_COLORS["text_secondary"]
+                            ))
+                
+                # Button container for multiple buttons
+                btn_container = ttk.Frame(addr_container, style="TFrame")
+                btn_container.pack(side=tk.RIGHT)
+                
+                view_btn = ttk.Button(btn_container, 
+                                     text="View", 
+                                     style="Small.TButton",
+                                     command=lambda a=addr, n=nickname: view_archive(a, n),
+                                     width=5)
+                view_btn.pack(side=tk.RIGHT, padx=(5, 0))
+                
+                copy_btn = ttk.Button(btn_container, 
+                                    text="Copy", 
+                                    style="Small.TButton",
+                                    command=lambda addr=addr: copy_archive_address(addr),
+                                    width=5)
+                copy_btn.pack(side=tk.RIGHT, padx=(5, 0))
+
+        # Configure card styles
+        style = ttk.Style()
+        style.configure("FileCard.TFrame", background=CURRENT_COLORS["bg_light"])
+        style.configure("ArchiveCard.TFrame", background=CURRENT_COLORS["bg_light"])
+        style.configure("Small.TButton", font=("Inter", 9))
+
+    def view_file(filename, addr):
+        """View a single public file"""
+        async def fetch_and_view():
+            try:
+                app.status_label.config(text=f"Loading file {filename}...")
+                data = await app.client.data_get_public(addr)
+                app.status_label.config(text="Ready")
+                import view
+                view.show_data_window(app, data, False, None, True, addr)
+            except Exception as e:
+                import traceback
+                logger.error("Error viewing file: %s\n%s", e, traceback.format_exc())
+                app.status_label.config(text="Ready")
+                messagebox.showerror("Error", f"Failed to view file: {e}")
+        
+        asyncio.run_coroutine_threadsafe(fetch_and_view(), app.loop)
+
+    def view_archive(addr, nickname):
+        """View the contents of an archive"""
+        async def fetch_and_view():
+            try:
+                app.status_label.config(text=f"Loading archive {nickname}...")
+                archive = await app.client.archive_get_public(addr)
+                app.status_label.config(text="Ready")
+                import view
+                view.show_data_window(app, None, False, archive, False, addr)
+            except Exception as e:
+                import traceback
+                logger.error("Error viewing archive: %s\n%s", e, traceback.format_exc())
+                app.status_label.config(text="Ready")
+                messagebox.showerror("Error", f"Failed to view archive: {e}")
+        
+        asyncio.run_coroutine_threadsafe(fetch_and_view(), app.loop)
 
     def filter_files():
         query = search_entry.get().lower()
         refresh_content(query)
 
     search_entry.bind("<KeyRelease>", lambda e: filter_files())
-    
+
     def add_to_archive():
         selected = [(filename, chunk_addr) for var, filename, chunk_addr in check_vars if var.get()]
         if not selected:
             messagebox.showwarning("Selection Error", "Please select at least one file to archive.")
             return
 
-        archive_window = tk.Toplevel(app.root)
-        archive_window.title("Archive File")
-        archive_window.resizable(True, True)
-        archive_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
-        archive_window.transient(app.root)
-        archive_window.grab_set()
-
-        ttk.Label(archive_window, text="Nickname for New Archive:").pack(pady=5)
-        nickname_entry = ttk.Entry(archive_window)
-        nickname_entry.pack(pady=5)
+        # Create a modern styled dialog for creating archives
+        dialog, main_frame = gui.create_centered_dialog(
+            parent=app.root,
+            title="Create Archive",
+            min_width=450,
+            min_height=300,
+            padding=20
+        )
+        
+        # Header
+        ttk.Label(main_frame, text="Create Archive", 
+                font=("Inter", 16, "bold"), 
+                foreground=CURRENT_COLORS["accent_primary"]).pack(anchor="w", pady=(0, 15))
+        
+        # Nickname field
+        nickname_frame = ttk.Frame(main_frame, style="TFrame")
+        nickname_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(nickname_frame, text="Archive Name:", 
+                font=("Inter", 11)).pack(side=tk.LEFT)
+        
+        nickname_entry = ttk.Entry(nickname_frame)
+        nickname_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
         nickname_entry.insert(0, "My Archive")
-
+        
+        # Archive selection
         public_archives = [(addr, name) for addr, name, is_private in app.local_archives if not is_private]
-        ttk.Label(archive_window, text="Select Archive:").pack(pady=5)
-        archive_combo = ttk.Combobox(archive_window, values=[f"{n} - {a}" for a, n in public_archives])
-        archive_combo.pack(pady=5)
-        archive_combo.set("Create New Archive")
-
+        
+        ttk.Label(main_frame, text="Select Destination:", 
+                font=("Inter", 11)).pack(anchor="w", pady=(15, 5))
+        
+        # Create new archive option
+        new_archive_var = tk.BooleanVar(value=True)
+        create_new_radio = ttk.Radiobutton(
+            main_frame, 
+            text="Create New Archive", 
+            variable=new_archive_var, 
+            value=True
+        )
+        create_new_radio.pack(anchor="w", padx=(20, 0), pady=2)
+        
+        # Existing archive option
+        existing_radio = ttk.Radiobutton(
+            main_frame, 
+            text="Add to Existing Archive", 
+            variable=new_archive_var, 
+            value=False
+        )
+        existing_radio.pack(anchor="w", padx=(20, 0), pady=2)
+        
+        # Archive dropdown (only enabled when adding to existing)
+        archive_values = [f"{n} - {a}" for a, n in public_archives]
+        archive_combo = ttk.Combobox(main_frame, values=archive_values, state="disabled")
+        archive_combo.pack(fill=tk.X, padx=(20, 0), pady=(5, 15))
+        if archive_values:
+            archive_combo.current(0)
+        
+        # Enable/disable combo based on radio selection
+        def toggle_combo():
+            if new_archive_var.get():
+                archive_combo.config(state="disabled")
+            else:
+                archive_combo.config(state="readonly")
+        
+        new_archive_var.trace_add("write", lambda *args: toggle_combo())
+        
+        # Remove option
         remove_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(archive_window, text="Remove selected files from Uploaded Files list", variable=remove_var).pack(pady=5)
+        ttk.Checkbutton(
+            main_frame, 
+            text="Remove selected files from upload list after archiving", 
+            variable=remove_var
+        ).pack(anchor="w", pady=(10, 5))
+        
+        # Button area
+        button_frame = ttk.Frame(main_frame, style="TFrame", padding=(0, 20, 0, 0))
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        ttk.Button(
+            button_frame, 
+            text="Cancel", 
+            style="Secondary.TButton",
+            command=dialog.destroy
+        ).pack(side=tk.LEFT)
+        
+        create_btn = ttk.Button(
+            button_frame, 
+            text="Create Archive", 
+            style="Accent.TButton",
+            command=lambda: [
+                do_archive(
+                    nickname_entry.get().strip(), 
+                    "Create New Archive" if new_archive_var.get() else archive_combo.get(),
+                    remove_var.get(),
+                    selected
+                ),
+                dialog.destroy()
+            ]
+        )
+        create_btn.pack(side=tk.RIGHT)
+        
+        return
 
-        ttk.Button(archive_window, text="Archive", command=lambda: asyncio.run_coroutine_threadsafe(
-            do_archive(nickname_entry.get().strip(), archive_combo.get(), remove_var.get(), selected), app.loop)).pack(pady=10)
-    
     async def do_archive(nickname, archive_choice, should_remove, selected):
         if not nickname:
-            app.root.after(0, lambda: messagebox.showwarning("Input Error", "Please enter a nickname for the archive."))
+            messagebox.showwarning("Input Error", "Please enter a nickname for the archive.")
             return
 
         app.root.after(0, lambda: messagebox.showinfo("Archiving Started", "The archiving process has begun. It can take a while..."))
@@ -715,7 +1003,7 @@ def display_public_files(app, parent_frame):
                     app.client.archive_put_public(archive, app.wallet),
                     timeout=15000
                 )
-                for i, (addr, n, is_private) in enumerate(app.local_archives):
+                for i, (addr, _, is_private) in enumerate(app.local_archives):
                     if addr == archive_addr and not is_private:
                         app.local_archives[i] = (new_archive_addr, nickname, False)
                         break
@@ -729,21 +1017,53 @@ def display_public_files(app, parent_frame):
             app.save_persistent_data()
             app.root.after(0, lambda: refresh_content())
             app.root.after(0, lambda: messagebox.showinfo("Success", f"Archive '{nickname}' created successfully at {archive_addr}"))
-        except Exception as e:
+        except asyncio.TimeoutError:
+            logger.error("Archive operation timed out after 1200 seconds")
+            app.root.after(0, lambda: messagebox.showerror("Error", "Archive operation timed out. Check your network connection."))
+        except Exception as error:
             import traceback
-            logger.error("Archive error: %s\n%s", e, traceback.format_exc())
-            app.root.after(0, lambda: messagebox.showerror("Error", f"Archive operation failed: {str(e)}"))
+            logger.error("Archiving error: %s\n%s", error, traceback.format_exc())
+            error_msg = str(error)
+            app.root.after(0, lambda: messagebox.showerror("Error", f"Archiving failed: {error_msg}"))
         finally:
             app.is_processing = False
             app.stop_status_animation()
-    
+
     def remove_selected():
         selected_files = [(filename, chunk_addr) for var, filename, chunk_addr in check_vars if var.get()]
         selected_archives = [(addr, nickname) for var, addr, nickname in archive_vars if var.get()]
         if not selected_files and not selected_archives:
             messagebox.showwarning("Selection Error", "Please select at least one item to remove.")
             return
-        if messagebox.askyesno("Confirm Removal", f"Remove {len(selected_files)} files and {len(selected_archives)} archives from the list? This won't delete the data from the network."):
+        
+        # Create styled confirmation dialog
+        dialog, main_frame = gui.create_centered_dialog(
+            parent=app.root,
+            title="Confirm Removal",
+            min_width=400,
+            min_height=200,
+            padding=20
+        )
+        
+        # Warning icon
+        ttk.Label(main_frame, text="⚠️", font=("Inter", 24)).pack(pady=(0, 10))
+        
+        # Confirmation message
+        msg = f"Remove {len(selected_files)} file(s) and {len(selected_archives)} archive(s) from the list?\n\nThis won't delete the data from the network."
+        ttk.Label(main_frame, text=msg, font=("Inter", 11), justify="center").pack(pady=10)
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame, style="TFrame", padding=(0, 20, 0, 0))
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        ttk.Button(
+            button_frame, 
+            text="Cancel", 
+            style="Secondary.TButton",
+            command=dialog.destroy
+        ).pack(side=tk.LEFT)
+        
+        def confirm_remove():
             for filename, chunk_addr in selected_files:
                 app.uploaded_files.remove((filename, chunk_addr))
             for addr, nickname in selected_archives:
@@ -753,10 +1073,31 @@ def display_public_files(app, parent_frame):
                         break
             app.save_persistent_data()
             refresh_content()
+            dialog.destroy()
+        
+        ttk.Button(
+            button_frame, 
+            text="Remove", 
+            style="Accent.TButton",
+            command=confirm_remove
+        ).pack(side=tk.RIGHT)
+
+    # Add styled buttons to button frame
+    add_archive_btn = ttk.Button(
+        buttons_frame, 
+        text="Create Archive", 
+        command=add_to_archive, 
+        style="Accent.TButton"
+    )
+    add_archive_btn.pack(side=tk.LEFT, padx=5)
     
-    # Add buttons to the buttons_frame
-    ttk.Button(buttons_frame, text="Add to Archive", command=add_to_archive, style="Accent.TButton").pack(side=tk.LEFT, padx=5)
-    ttk.Button(buttons_frame, text="Remove from List", command=remove_selected, style="Accent.TButton").pack(side=tk.LEFT, padx=5)
+    remove_btn = ttk.Button(
+        buttons_frame, 
+        text="Remove Selected", 
+        command=remove_selected, 
+        style="Secondary.TButton"
+    )
+    remove_btn.pack(side=tk.LEFT, padx=5)
     
-    # Initialize content display
+    # Display initial content
     refresh_content()
