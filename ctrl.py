@@ -66,15 +66,15 @@ class TestApp:
         self._current_operation = None
         self.upload_queue = []
         self.download_queue = []
-        self.local_archives = []  # Each archive is (address, nickname, is_private)
-        self.uploaded_files = []  # Each item is (filename, chunk_address)
-        self.uploaded_private_files = []  # Each item is (filename, access_token)
+        self.local_archives = []  
+        self.uploaded_files = []  
+        self.uploaded_private_files = []  
         self.ant_balance = 0.0
         self.eth_balance = 0.0
         self.ant_price_usd = 0.0
         self.eth_price_usd = 0.0
-        self.balance_history = deque(maxlen=50)  # Use deque instead of list for appendleft operation
-        self.dark_mode_enabled = False  # Default to light mode
+        self.balance_history = deque(maxlen=50)
+        self.dark_mode_enabled = True
         
         self.load_persistent_data()
 
@@ -104,7 +104,7 @@ class TestApp:
         self.root.minsize(600, 500)
         self.root.withdraw()
         
-        # Initial user consent for fund risk - styled warning
+        # Initial user consent for fund risk
         warning_window = Toplevel(self.root)
         warning_window.title("Warning")
         warning_window.configure(bg=COLORS["bg_light"])
@@ -194,15 +194,15 @@ class TestApp:
         
         # Start connectivity checks with quote - first time and periodic checks
         self.root.after(0, lambda: connectivity.schedule_connection_check(self, first_check=True))
-        # After first check, schedule regular checks every 5 minutes
-        self.root.after(5000, lambda: connectivity.schedule_connection_check(self, first_check=False))
+        # After first check, schedule regular checks every 20 minutes
+        self.root.after(20000, lambda: connectivity.schedule_connection_check(self, first_check=False))
         
         if os.path.exists(self.wallet_file):
             self.root.after(0, self._schedule_wallet_prompt)
         else:
             self.wallet_address_label.config(text="Wallet: Not Created")
             self.logger.info("No wallet file found at %s", self.wallet_file)
-            self.root.after(0, self.show_wallet_setup_wizard)  # Automatically show wallet setup wizard
+            self.root.after(0, self.show_wallet_options)  # Automatically show wallet setup wizard
         
         # The status will be updated by the connectivity module
         # self.connection_label.config(text="Network: Connected to Autonomi")
@@ -211,16 +211,23 @@ class TestApp:
         self.logger.info("Scheduling wallet password prompt")
         self.logger.info("Wallet file exists: %s", os.path.exists(self.wallet_file))
         def on_wallet_loaded(success, was_canceled=False):
-            if not success and not was_canceled:
-                # Only show wallet setup wizard if the user didn't cancel the dialog
-                # but actually failed to authenticate (wrong password)
-                self.logger.info("No valid wallet loaded, prompting for wallet setup")
-                self.show_wallet_setup_wizard()
-            elif was_canceled:
-                # Only show the unlock button if the user specifically canceled the dialog
-                self.logger.info("User canceled wallet unlock dialog, showing unlock button")
+            if success:
+                self.logger.info("Wallet unlocked successfully.")
+                # Hide unlock button if it was shown
                 if hasattr(self, 'unlock_button'):
-                    self.unlock_button.pack(side=tk.RIGHT, padx=(0, 10))
+                    self.unlock_button.pack_forget()
+            else:
+                if was_canceled:
+                    self.logger.info("User canceled wallet unlock dialog, showing unlock button")
+                    # Check if root window still exists before packing
+                    if self.root.winfo_exists():
+                        self.unlock_button.pack(side=tk.RIGHT, padx=(0, 10))
+                else:
+                    # Handle decryption failure (wrong password)
+                    self.logger.error("Wallet decryption failed (wrong password). Showing unlock button.")
+                    # Check if root window still exists before packing
+                    if self.root.winfo_exists():
+                        self.unlock_button.pack(side=tk.RIGHT, padx=(0, 10))
         
         download_only = False
         if hasattr(self, 'current_view'):
@@ -228,61 +235,247 @@ class TestApp:
         
         wallet.prompt_wallet_password(self, on_wallet_loaded, download_only=download_only)
 
-    def show_wallet_setup_wizard(self):
-        # Wallet setup UI for new users
-        self.logger.info("Showing wallet setup wizard")
-        wizard_window = tk.Toplevel(self.root)
-        wizard_window.title("Setup Wizard")
-        wizard_window.resizable(True, True)
-        wizard_window.transient(self.root)
-        wizard_window.grab_set()
-        wizard_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
+    def show_wallet_options(self):
+        import gui
         
-        header_frame = ttk.Frame(wizard_window, style="TFrame", padding="30 30 30 20")
-        header_frame.pack(fill=tk.X)
+        # Use the create_centered_dialog function for consistent dialog sizing
+        wallet_window, main_frame = gui.create_centered_dialog(
+            parent=self.root,
+            title="Wallet Management",
+            min_width=450,
+            min_height=400
+        )
         
-        ttk.Label(header_frame, text="Welcome to Mission Ctrl", 
-                font=("Inter", 20, "bold"), 
-                foreground=COLORS["accent_primary"]).pack(anchor="w")
+        # Header
+        ttk.Label(main_frame, text="Wallet Options", 
+                font=("Inter", 16, "bold"), 
+                foreground=gui.CURRENT_COLORS["accent_primary"]).pack(anchor="w")
         
-        ttk.Label(header_frame, text="Let's set up your wallet", 
-                font=("Inter", 14), 
-                foreground=COLORS["text_secondary"]).pack(anchor="w", pady=(5, 0))
+        ttk.Label(main_frame, text="Manage your wallet settings", 
+                font=("Inter", 11),
+                foreground=gui.CURRENT_COLORS["text_secondary"]).pack(anchor="w", pady=(5, 20))
         
-        # Content section
-        content_frame = ttk.Frame(wizard_window, style="RoundedCard.TFrame", padding="30")
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=(0, 30))
+        # === Wallet Management Section ===
+        ttk.Label(main_frame, text="Wallet Management", 
+                font=("Inter", 12, "bold")).pack(anchor="w", pady=(0, 10))
         
-        # Info text
-        info_label = ttk.Label(content_frame, 
-                text="You need a wallet to use Mission Ctrl. A wallet stores your funds (ETH and ANT) and pays for uploads.", 
-                wraplength=400,
-                style="CardText.TLabel")
-        info_label.pack(anchor="w", pady=(0, 20))
+        # Create New Wallet button
+        create_btn = ttk.Button(main_frame, text="Create New Wallet",
+                              style="Accent.TButton",
+                              command=lambda: wallet.create_wallet(self, wallet_window))
+        create_btn.pack(fill=tk.X, pady=(0, 10))
         
-        # Simple instruction
-        instruction_label = ttk.Label(content_frame, 
-                text="Click 'Let's Go' below to create a new wallet or import an existing one.", 
-                wraplength=400,
-                style="CardText.TLabel")
-        instruction_label.pack(anchor="w", pady=(10, 60))
+        # Import Wallet button
+        import_btn = ttk.Button(main_frame, text="Import Wallet (Private Key)",
+                              style="Accent.TButton",
+                              command=lambda: wallet.import_wallet(self, wallet_window))
+        import_btn.pack(fill=tk.X, pady=(0, 20))
         
-        button_frame = ttk.Frame(content_frame, style="CardContent.TFrame", padding="0 0 0 0")
-        button_frame.pack(fill=tk.X)
+        # === Wallet Actions Section ===
+        ttk.Label(main_frame, text="Wallet Actions", 
+                font=("Inter", 12, "bold")).pack(anchor="w", pady=(0, 10))
         
-        def go_to_wallet_options():
-            wizard_window.destroy()
-            self.show_wallet_options()
-            
-        go_btn = ttk.Button(button_frame, text="Let's Go",
+        # Copy Wallet Address button
+        def copy_wallet_address():
+            if self.wallet:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(self.wallet.address())
+                
+                # Create custom top-level dialog that stays on top
+                success_dialog, success_frame = gui.create_centered_dialog(
+                    parent=self.root,
+                    title="Address Copied",
+                    min_width=350,
+                    min_height=200
+                )
+                
+                # Light bulb icon + message
+                ttk.Label(success_frame, text="💡", font=("Inter", 24)).pack(pady=(0, 15))
+                ttk.Label(success_frame, text="Wallet address copied to clipboard!", 
+                        font=("Inter", 11)).pack(pady=10)
+                
+                # Separator
+                ttk.Separator(success_frame, orient="horizontal").pack(fill=tk.X, pady=15)
+                
+                # OK button
+                ok_btn = ttk.Button(success_frame, text="OK", 
+                                 command=lambda: [success_dialog.destroy(), wallet_window.destroy()],
                           style="Accent.TButton",
-                          command=go_to_wallet_options,
-                          width=20)
-        go_btn.pack(side=tk.RIGHT, padx=10)
+                                 width=15)
+                ok_btn.pack(pady=10)
+                
+                # Override WM protocol to ensure proper destroy behavior
+                success_dialog.protocol("WM_DELETE_WINDOW", success_dialog.destroy)
+                success_dialog.focus_set()
+            else:
+                # Use the new styled error function instead of basic messagebox
+                from wallet import show_styled_error
+                show_styled_error(self, "Error", "No wallet loaded to copy address from.", wallet_window)
+                
+        copy_btn = ttk.Button(main_frame, text="Copy Wallet Address",
+                           style="Secondary.TButton",
+                           command=copy_wallet_address)
+        copy_btn.pack(fill=tk.X, pady=(0, 10))
         
-        # Apply theme if in dark mode
-        if hasattr(self, 'is_dark_mode') and self.is_dark_mode:
-            gui.apply_theme_to_toplevel(wizard_window, True)
+        # View Private Key button (new)
+        view_pk_btn = ttk.Button(main_frame, text="View Private Key (Password Protected)",
+                              style="Secondary.TButton",
+                              command=lambda: wallet.display_private_key(self, wallet_window))
+        view_pk_btn.pack(fill=tk.X, pady=(0, 20))
+        
+        # === Danger Zone Section ===
+        danger_label = ttk.Label(main_frame, text="Danger Zone", 
+                              font=("Inter", 11),
+                              foreground=gui.CURRENT_COLORS["error"])
+        danger_label.pack(anchor="w", pady=(0, 10))
+        
+        # Delete button with warning styling
+        delete_btn = ttk.Button(main_frame, text="Delete Current Wallet",
+                             style="Secondary.TButton",
+                             command=lambda: wallet.delete_wallet(self, wallet_window))
+        delete_btn.pack(fill=tk.X, pady=(0, 10))
+        
+        # Footer with close button
+        footer_frame = ttk.Frame(main_frame, style="TFrame", padding=(0, 20, 0, 0))
+        footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        close_btn = ttk.Button(footer_frame, text="Close",
+                            style="Secondary.TButton",
+                            command=wallet_window.destroy)
+        close_btn.pack(side=tk.RIGHT)
+
+    def view_archive_file(self, addr, name):
+        view.view_file(self, addr, name)
+
+    def start_status_update(self):
+        """Configure status updates and animations"""
+        # Set initial status message only if it hasn't been set already
+        if hasattr(self, 'status_label') and not hasattr(self, 'status_initialized'):
+            self.status_label.config(text="Checking connection...")
+            self.status_initialized = True
+        
+        # Initialize animation state
+        if hasattr(self, 'conn_dot'):
+            self.connection_dot_state = 0
+            self.connection_animation_running = False
+            
+        # Schedule regular status updates
+        if self.status_update_task:
+            self.root.after_cancel(self.status_update_task)
+        self.status_update_task = self.root.after(500, self.update_status)
+
+    def update_status(self):
+        if self.is_processing:
+            self.status_label.config(text=f"{self.status_dots[self.current_dot_idx]} {self._current_operation_message()} {self.status_dots[self.current_dot_idx]}")
+            self.current_dot_idx = (self.current_dot_idx + 1) % len(self.status_dots)
+        # Only schedule next update if processing or animating
+        self.status_update_task = self.root.after(500, self.update_status)
+
+    def _current_operation_message(self):
+        if self._current_operation == 'upload':
+            return "Uploading files"
+        elif self._current_operation == 'cost_calc':
+            return "Getting upload cost quote, please wait"
+        elif self._current_operation == 'archive':
+            return "Archiving files"
+        elif self._current_operation == 'download':
+            return "Downloading data"
+        return "Processing"
+
+    def stop_status_animation(self):
+        if self.status_update_task:
+            self.root.after_cancel(self.status_update_task)
+            self.status_update_task = None
+            self.current_dot_idx = 0
+            self.status_label.config(text="Ready")
+
+    def start_status_animation(self):
+        if not self.status_update_task:
+            self.start_status_update()
+
+    def _show_upload_success(self, address, filename, is_private):
+        from tkinter import messagebox
+        messagebox.showinfo("Success", f"Uploaded {filename} to address: {address[:10]}... ({'Private' if is_private else 'Public'})")
+        self.status_label.config(text="Upload successful")
+
+    def load_persistent_data(self):
+        # Load persisted app state
+        try:
+            if os.path.exists(self.data_file):
+                with open(self.data_file, 'r') as f:
+                    data = json.load(f)
+                self.uploaded_files = [(item["filename"], item["chunk_addr"]) for item in data.get("uploaded_files", [])]
+                self.local_archives = [(item["addr"], item["nickname"], item["is_private"]) for item in data.get("local_archives", [])]
+                self.upload_queue = [(item["type"], item["path"]) for item in data.get("upload_queue", [])]
+                self.download_queue = data.get("download_queue", [])
+                self.uploaded_private_files = [(item["filename"], item["access_token"]) for item in data.get("uploaded_private_files", [])]
+                self.dark_mode_enabled = data.get("dark_mode_enabled", False)
+                
+                # Load balance history as a deque if present
+                if "balance_history" in data:
+                    # Convert string timestamps back to datetime objects
+                    history_data = []
+                    for record in data["balance_history"]:
+                        if isinstance(record, dict) and 'timestamp' in record and isinstance(record['timestamp'], str):
+                            try:
+                                record_copy = record.copy()
+                                record_copy['timestamp'] = datetime.datetime.fromisoformat(record['timestamp'])
+                                history_data.append(record_copy)
+                            except (ValueError, TypeError):
+                                # Skip records with invalid timestamp format
+                                continue
+                        else:
+                            # If timestamp is missing or not a string, skip this record
+                            continue
+                    self.balance_history = deque(history_data, maxlen=50)
+                else:
+                    self.balance_history = deque(maxlen=50)
+                
+                # Load saved crypto prices if available
+                if "ant_price_usd" in data and data["ant_price_usd"] > 0:
+                    self.ant_price_usd = data["ant_price_usd"]
+                if "eth_price_usd" in data and data["eth_price_usd"] > 0:
+                    self.eth_price_usd = data["eth_price_usd"]
+                    
+                self.logger.info("Loaded persistent data from %s", self.data_file)
+        except Exception as e:
+            self.logger.error("Failed to load persistent data: %s", e)
+            self.uploaded_files = []
+            self.local_archives = []
+            self.upload_queue = []
+            self.download_queue = []
+            self.uploaded_private_files = []
+            self.dark_mode_enabled = False
+
+    def save_persistent_data(self):
+        # Save app state to JSON
+        try:
+            # Convert datetime objects in balance_history to ISO format strings
+            serializable_history = []
+            for record in self.balance_history:
+                # Create a copy of the record
+                serialized_record = record.copy()
+                # Convert datetime to string in ISO format
+                if 'timestamp' in serialized_record and isinstance(serialized_record['timestamp'], datetime.datetime):
+                    serialized_record['timestamp'] = serialized_record['timestamp'].isoformat()
+                serializable_history.append(serialized_record)
+            
+            data = {
+                "uploaded_files": [{"filename": f, "chunk_addr": a} for f, a in self.uploaded_files],
+                "local_archives": [{"addr": a, "nickname": n, "is_private": p} for a, n, p in self.local_archives],
+                "upload_queue": [{"type": t, "path": p} for t, p in self.upload_queue],
+                "download_queue": self.download_queue,
+                "uploaded_private_files": [{"filename": f, "access_token": a} for f, a in self.uploaded_private_files],
+                "dark_mode_enabled": self.dark_mode_enabled,  # Save dark mode preference
+                "ant_price_usd": self.ant_price_usd,  # Save current ANT price
+                "eth_price_usd": self.eth_price_usd,   # Save current ETH price
+                "balance_history": serializable_history  # Use the version with string timestamps
+            }
+            with open(self.data_file, 'w') as f:
+                json.dump(data, f, indent=4)
+            self.logger.info("Saved persistent data to %s", self.data_file)
+        except Exception as e:
+            self.logger.error("Failed to save persistent data: %s", e)
 
     def update_balances(self):
         if self.wallet:
@@ -616,15 +809,12 @@ class TestApp:
                 return
             paths_to_upload = file_paths
         else:
-            choice_window = Toplevel(self.root)
-            choice_window.title("Upload Type")
-            choice_window.transient(self.root)
-            choice_window.grab_set()
-            choice_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
-            choice_window.resizable(True, True)
-
-            main_frame = ttk.Frame(choice_window, style="TFrame", padding=20)
-            main_frame.pack(fill=tk.BOTH, expand=True)
+            choice_window, main_frame = gui.create_centered_dialog(
+                parent=self.root,
+                title="Upload Type",
+                min_width=400,
+                min_height=250
+            )
 
             ttk.Label(main_frame, text="Select upload type:", 
                       font=("Inter", 12, "bold"),
@@ -632,19 +822,12 @@ class TestApp:
             
             choice_var = StringVar(value="files")
             
-            # Create a custom style for the radio buttons
-            style = ttk.Style()
-            radio_style = "Dialog.TRadiobutton"
-            style.configure(radio_style, 
-                           background=gui.CURRENT_COLORS["bg_light"],
-                           foreground=gui.CURRENT_COLORS["text_primary"])
-            
             # Files radio button
             files_radio = ttk.Radiobutton(main_frame, 
                                         text="Files", 
                                         variable=choice_var, 
                                         value="files",
-                                        style=radio_style)
+                                        style="TRadiobutton")
             files_radio.pack(anchor="w", padx=5, pady=5)
             
             # Directory radio button
@@ -653,8 +836,15 @@ class TestApp:
                                           text="Directory", 
                                           variable=choice_var, 
                                           value="directory",
-                                          style=radio_style)
+                                          style="TRadiobutton")
                 dir_radio.pack(anchor="w", padx=5, pady=5)
+            
+            # Directly apply text color to these widgets if in dark mode
+            if hasattr(self, 'is_dark_mode') and self.is_dark_mode:
+                style = ttk.Style()
+                style.configure("TRadiobutton", 
+                              background=gui.DARK_COLORS["bg_light"],
+                              foreground=gui.DARK_COLORS["text_primary"])
 
             def on_ok():
                 choice_window.destroy()
@@ -704,10 +894,7 @@ class TestApp:
                        width=15)
             ok_btn.pack(side=tk.RIGHT)
             
-            # Apply dark mode if enabled
-            if hasattr(self, 'dark_mode_enabled') and self.dark_mode_enabled:
-                gui.apply_theme_to_toplevel(choice_window, True)
-            
+            # Protocol for window close
             choice_window.protocol("WM_DELETE_WINDOW", lambda: [choice_window.destroy(), self.status_label.config(text="Ready")])
             return
 
@@ -972,264 +1159,6 @@ class TestApp:
         self.root.after(0, lambda: self.status_label.config(
             text=f"Queue processing completed - Success: {successful}, Failed: {failed}")
         )
-
-    def show_wallet_options(self):
-        wallet_window = tk.Toplevel(self.root)
-        wallet_window.title("Wallet Management")
-        wallet_window.resizable(True, True)
-        wallet_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
-        wallet_window.transient(self.root)
-        wallet_window.grab_set()
-        
-        # Main container with padding
-        main_frame = ttk.Frame(wallet_window, style="TFrame", padding=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Header
-        ttk.Label(main_frame, text="Wallet Options", 
-                font=("Inter", 16, "bold"), 
-                foreground=COLORS["accent_primary"]).pack(anchor="w")
-        
-        ttk.Label(main_frame, text="Manage your wallet settings", 
-                font=("Inter", 11),
-                foreground=COLORS["text_secondary"]).pack(anchor="w", pady=(5, 20))
-        
-        # === Wallet Management Section ===
-        ttk.Label(main_frame, text="Wallet Management", 
-                font=("Inter", 12, "bold")).pack(anchor="w", pady=(0, 10))
-        
-        # Create New Wallet button
-        create_btn = ttk.Button(main_frame, text="Create New Wallet",
-                              style="Accent.TButton",
-                              command=lambda: wallet.create_wallet(self, wallet_window))
-        create_btn.pack(fill=tk.X, pady=(0, 10))
-        
-        # Import Wallet button
-        import_btn = ttk.Button(main_frame, text="Import Wallet (Private Key)",
-                              style="Accent.TButton",
-                              command=lambda: wallet.import_wallet(self, wallet_window))
-        import_btn.pack(fill=tk.X, pady=(0, 20))
-        
-        # === Wallet Actions Section ===
-        ttk.Label(main_frame, text="Wallet Actions", 
-                font=("Inter", 12, "bold")).pack(anchor="w", pady=(0, 10))
-        
-        # Copy Wallet Address button
-        def copy_wallet_address():
-            if self.wallet:
-                self.root.clipboard_clear()
-                self.root.clipboard_append(self.wallet.address())
-                
-                # Create custom top-level dialog that stays on top
-                success_dialog = tk.Toplevel(self.root)
-                success_dialog.title("Setup Complete")
-                success_dialog.resizable(True, True)
-                success_dialog.configure(bg=gui.CURRENT_COLORS["bg_light"])
-                success_dialog.transient(self.root)
-                success_dialog.grab_set()
-                
-                # Centered container to hold content
-                center_frame = ttk.Frame(success_dialog, style="TFrame")
-                center_frame.pack(expand=True, fill=tk.BOTH)
-                
-                # Light bulb icon + message
-                ttk.Label(center_frame, text="💡", font=("Inter", 24)).pack(pady=(10, 15))
-                ttk.Label(center_frame, text="Wallet address copied to clipboard!", 
-                        font=("Inter", 11)).pack(pady=10)
-                
-                # Separator
-                ttk.Separator(center_frame, orient="horizontal").pack(fill=tk.X, pady=15)
-                
-                # OK button in its own frame at the bottom
-                button_frame = ttk.Frame(success_dialog, style="TFrame")
-                button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=15)
-                
-                ok_btn = ttk.Button(button_frame, text="OK", 
-                                 command=lambda: [success_dialog.destroy(), wallet_window.destroy()],
-                                 style="Accent.TButton",
-                                 width=15)
-                ok_btn.pack(pady=10)
-                
-                # Center the dialog on screen
-                success_dialog.update_idletasks()
-                width = success_dialog.winfo_reqwidth()
-                height = success_dialog.winfo_reqheight()
-                x = (success_dialog.winfo_screenwidth() // 2) - (width // 2)
-                y = (success_dialog.winfo_screenheight() // 2) - (height // 2)
-                success_dialog.geometry(f"{width}x{height}+{x}+{y}")
-                
-                # Override WM protocol to ensure proper destroy behavior
-                success_dialog.protocol("WM_DELETE_WINDOW", success_dialog.destroy)
-                success_dialog.focus_set()
-            else:
-                # Use the new styled error function instead of basic messagebox
-                from wallet import show_styled_error
-                show_styled_error(self, "Error", "No wallet loaded to copy address from.", wallet_window)
-                
-        copy_btn = ttk.Button(main_frame, text="Copy Wallet Address",
-                           style="Secondary.TButton",
-                           command=copy_wallet_address)
-        copy_btn.pack(fill=tk.X, pady=(0, 10))
-        
-        # View Private Key button (new)
-        view_pk_btn = ttk.Button(main_frame, text="View Private Key (Password Protected)",
-                              style="Secondary.TButton",
-                              command=lambda: wallet.display_private_key(self, wallet_window))
-        view_pk_btn.pack(fill=tk.X, pady=(0, 20))
-        
-        # === Danger Zone Section ===
-        danger_label = ttk.Label(main_frame, text="Danger Zone", 
-                              font=("Inter", 11),
-                              foreground=COLORS["error"])
-        danger_label.pack(anchor="w", pady=(0, 10))
-        
-        # Delete button with warning styling
-        delete_btn = ttk.Button(main_frame, text="Delete Current Wallet",
-                             style="Secondary.TButton",
-                             command=lambda: wallet.delete_wallet(self, wallet_window))
-        delete_btn.pack(fill=tk.X, pady=(0, 10))
-        
-        # Footer with close button
-        footer_frame = ttk.Frame(main_frame, style="TFrame", padding=(0, 20, 0, 0))
-        footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        
-        close_btn = ttk.Button(footer_frame, text="Close",
-                            style="Secondary.TButton",
-                            command=wallet_window.destroy)
-        close_btn.pack(side=tk.RIGHT)
-
-    def view_archive_file(self, addr, name):
-        view.view_file(self, addr, name)
-
-    def start_status_update(self):
-        """Configure status updates and animations"""
-        # Set initial status message only if it hasn't been set already
-        if hasattr(self, 'status_label') and not hasattr(self, 'status_initialized'):
-            self.status_label.config(text="Checking connection...")
-            self.status_initialized = True
-        
-        # Initialize animation state
-        if hasattr(self, 'conn_dot'):
-            self.connection_dot_state = 0
-            self.connection_animation_running = False
-            
-        # Schedule regular status updates
-        if self.status_update_task:
-            self.root.after_cancel(self.status_update_task)
-        self.status_update_task = self.root.after(500, self.update_status)
-
-    def update_status(self):
-        if self.is_processing:
-            self.status_label.config(text=f"{self.status_dots[self.current_dot_idx]} {self._current_operation_message()} {self.status_dots[self.current_dot_idx]}")
-            self.current_dot_idx = (self.current_dot_idx + 1) % len(self.status_dots)
-        # Only schedule next update if processing or animating
-        self.status_update_task = self.root.after(500, self.update_status)
-
-    def _current_operation_message(self):
-        if self._current_operation == 'upload':
-            return "Uploading files"
-        elif self._current_operation == 'cost_calc':
-            return "Getting upload cost quote, please wait"
-        elif self._current_operation == 'archive':
-            return "Archiving files"
-        elif self._current_operation == 'download':
-            return "Downloading data"
-        return "Processing"
-
-    def stop_status_animation(self):
-        if self.status_update_task:
-            self.root.after_cancel(self.status_update_task)
-            self.status_update_task = None
-            self.current_dot_idx = 0
-            self.status_label.config(text="Ready")
-
-    def start_status_animation(self):
-        if not self.status_update_task:
-            self.start_status_update()
-
-    def _show_upload_success(self, address, filename, is_private):
-        from tkinter import messagebox
-        messagebox.showinfo("Success", f"Uploaded {filename} to address: {address[:10]}... ({'Private' if is_private else 'Public'})")
-        self.status_label.config(text="Upload successful")
-
-    def load_persistent_data(self):
-        # Load persisted app state
-        try:
-            if os.path.exists(self.data_file):
-                with open(self.data_file, 'r') as f:
-                    data = json.load(f)
-                self.uploaded_files = [(item["filename"], item["chunk_addr"]) for item in data.get("uploaded_files", [])]
-                self.local_archives = [(item["addr"], item["nickname"], item["is_private"]) for item in data.get("local_archives", [])]
-                self.upload_queue = [(item["type"], item["path"]) for item in data.get("upload_queue", [])]
-                self.download_queue = data.get("download_queue", [])
-                self.uploaded_private_files = [(item["filename"], item["access_token"]) for item in data.get("uploaded_private_files", [])]
-                self.dark_mode_enabled = data.get("dark_mode_enabled", False)
-                
-                # Load balance history as a deque if present
-                if "balance_history" in data:
-                    # Convert string timestamps back to datetime objects
-                    history_data = []
-                    for record in data["balance_history"]:
-                        if isinstance(record, dict) and 'timestamp' in record and isinstance(record['timestamp'], str):
-                            try:
-                                record_copy = record.copy()
-                                record_copy['timestamp'] = datetime.datetime.fromisoformat(record['timestamp'])
-                                history_data.append(record_copy)
-                            except (ValueError, TypeError):
-                                # Skip records with invalid timestamp format
-                                continue
-                        else:
-                            # If timestamp is missing or not a string, skip this record
-                            continue
-                    self.balance_history = deque(history_data, maxlen=50)
-                else:
-                    self.balance_history = deque(maxlen=50)
-                
-                # Load saved crypto prices if available
-                if "ant_price_usd" in data and data["ant_price_usd"] > 0:
-                    self.ant_price_usd = data["ant_price_usd"]
-                if "eth_price_usd" in data and data["eth_price_usd"] > 0:
-                    self.eth_price_usd = data["eth_price_usd"]
-                    
-                self.logger.info("Loaded persistent data from %s", self.data_file)
-        except Exception as e:
-            self.logger.error("Failed to load persistent data: %s", e)
-            self.uploaded_files = []
-            self.local_archives = []
-            self.upload_queue = []
-            self.download_queue = []
-            self.uploaded_private_files = []
-            self.dark_mode_enabled = False
-
-    def save_persistent_data(self):
-        # Save app state to JSON
-        try:
-            # Convert datetime objects in balance_history to ISO format strings
-            serializable_history = []
-            for record in self.balance_history:
-                # Create a copy of the record
-                serialized_record = record.copy()
-                # Convert datetime to string in ISO format
-                if 'timestamp' in serialized_record and isinstance(serialized_record['timestamp'], datetime.datetime):
-                    serialized_record['timestamp'] = serialized_record['timestamp'].isoformat()
-                serializable_history.append(serialized_record)
-            
-            data = {
-                "uploaded_files": [{"filename": f, "chunk_addr": a} for f, a in self.uploaded_files],
-                "local_archives": [{"addr": a, "nickname": n, "is_private": p} for a, n, p in self.local_archives],
-                "upload_queue": [{"type": t, "path": p} for t, p in self.upload_queue],
-                "download_queue": self.download_queue,
-                "uploaded_private_files": [{"filename": f, "access_token": a} for f, a in self.uploaded_private_files],
-                "dark_mode_enabled": self.dark_mode_enabled,  # Save dark mode preference
-                "ant_price_usd": self.ant_price_usd,  # Save current ANT price
-                "eth_price_usd": self.eth_price_usd,   # Save current ETH price
-                "balance_history": serializable_history  # Use the version with string timestamps
-            }
-            with open(self.data_file, 'w') as f:
-                json.dump(data, f, indent=4)
-            self.logger.info("Saved persistent data to %s", self.data_file)
-        except Exception as e:
-            self.logger.error("Failed to save persistent data: %s", e)
 
 TestApp._view_archive_file = view.view_file
 

@@ -549,11 +549,6 @@ def display_public_files(app, parent_frame):
     from tkinter import ttk, messagebox
     from gui import add_context_menu, CURRENT_COLORS
     
-    # --- Layout Order --- 
-    # 1. Search bar at the top
-    # 2. Buttons at the bottom
-    # 3. Lists fill the middle
-    
     # Create search frame (Pack later)
     search_frame = ttk.Frame(parent_frame)
     ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
@@ -578,8 +573,6 @@ def display_public_files(app, parent_frame):
     # Update scrollregion when inner frame size changes
     def on_files_configure(event):
         files_canvas.configure(scrollregion=files_canvas.bbox("all"))
-        # Adjust canvas window width to prevent horizontal scroll unless needed
-        # files_canvas.itemconfig(canvas_window_files, width=event.width)
     files_inner_frame.bind("<Configure>", on_files_configure)
     
     check_vars = []
@@ -594,11 +587,8 @@ def display_public_files(app, parent_frame):
     archives_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     canvas_window_archives = archives_canvas.create_window((0, 0), window=archives_inner_frame, anchor="nw")
 
-    # Update scrollregion when inner frame size changes
     def on_archives_configure(event):
         archives_canvas.configure(scrollregion=archives_canvas.bbox("all"))
-        # Adjust canvas window width to prevent horizontal scroll unless needed
-        # archives_canvas.itemconfig(canvas_window_archives, width=event.width)
     archives_inner_frame.bind("<Configure>", on_archives_configure)
 
     archive_vars = []
@@ -606,7 +596,6 @@ def display_public_files(app, parent_frame):
     # --- Pack elements in correct order --- 
     search_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
     buttons_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=10)
-    # Pack lists last, filling the middle space from the top down
     files_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=10, pady=5, expand=True)
     archives_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=10, pady=5, expand=True)
 
@@ -654,12 +643,6 @@ def display_public_files(app, parent_frame):
                 addr_entry.grid(row=row_index, column=1, sticky="ew", padx=(0, 5), pady=2)
                 add_context_menu(addr_entry)
                 row_index += 1
-
-        # No need to update scrollregion manually here, the bind does it
-        # files_inner_frame.update_idletasks()
-        # files_canvas.configure(scrollregion=files_canvas.bbox("all"))
-        # archives_inner_frame.update_idletasks()
-        # archives_canvas.configure(scrollregion=archives_canvas.bbox("all"))
 
     def filter_files():
         query = search_entry.get().lower()

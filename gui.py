@@ -453,7 +453,6 @@ def setup_main_gui(app):
     wallet_actions.pack(fill=tk.X)
     
     # Unlock wallet button - only shown when wallet file exists but not unlocked
-    # Will be positioned on the right side with other buttons
     def unlock_wallet():
         def on_wallet_loaded(success):
             # Update UI if wallet was unlocked
@@ -831,25 +830,195 @@ def apply_theme_to_toplevel(toplevel, is_dark=False):
                     activebackground=colors["bg_light"],
                     activeforeground=colors["text_primary"]
                 )
+        elif isinstance(child, tk.Radiobutton) or isinstance(child, tk.Checkbutton):
+            # Fix for standard Radiobutton and Checkbutton widgets
+            child.configure(
+                bg=colors["bg_light"],
+                fg=colors["text_primary"],
+                activebackground=colors["bg_light"],
+                activeforeground=colors["accent_primary"],
+                selectcolor=colors["bg_secondary"]
+            )
+        elif isinstance(child, ttk.Frame):
+            _apply_theme_to_ttk_widget(child, colors)
+        elif isinstance(child, ttk.Label):
+            _apply_theme_to_ttk_widget(child, colors)
+        elif isinstance(child, tk.Button):
+            _apply_theme_to_ttk_widget(child, colors)
+        elif isinstance(child, ttk.Checkbutton) or isinstance(child, ttk.Radiobutton):
+            _apply_theme_to_ttk_widget(child, colors)
         
         # Recursive call for any child containers
         if hasattr(child, 'winfo_children') and callable(child.winfo_children):
-            for grandchild in child.winfo_children():
-                if hasattr(grandchild, 'configure'):
-                    try:
-                        if isinstance(grandchild, tk.Entry):
-                            grandchild.configure(
-                                bg=colors["bg_input"],
-                                fg=colors["text_primary"],
-                                insertbackground=colors["text_primary"],
-                                disabledbackground=colors["bg_secondary"]
-                            )
-                        elif isinstance(grandchild, tk.Label):
-                            grandchild.configure(bg=colors["bg_light"], fg=colors["text_primary"])
-                        elif isinstance(grandchild, tk.Frame):
-                            grandchild.configure(bg=colors["bg_light"])
-                    except:
-                        pass
+            _apply_theme_to_children(child, colors)
+
+def _apply_theme_to_children(parent, colors):
+    """Recursively apply theme to all children widgets"""
+    for child in parent.winfo_children():
+        if isinstance(child, tk.Frame):
+            child.configure(bg=colors["bg_light"], highlightthickness=0, bd=0)
+        elif isinstance(child, tk.Label):
+            child.configure(bg=colors["bg_light"], fg=colors["text_primary"])
+        elif isinstance(child, tk.Entry):
+            child.configure(
+                bg=colors["bg_input"],
+                fg=colors["text_primary"],
+                insertbackground=colors["text_primary"],
+                disabledbackground=colors["bg_secondary"]
+            )
+        elif isinstance(child, tk.Radiobutton) or isinstance(child, tk.Checkbutton):
+            # Fix for standard Radiobutton and Checkbutton widgets
+            child.configure(
+                bg=colors["bg_light"],
+                fg=colors["text_primary"],
+                activebackground=colors["bg_light"],
+                activeforeground=colors["accent_primary"],
+                selectcolor=colors["bg_secondary"]
+            )
+        elif isinstance(child, ttk.Frame):
+            _apply_theme_to_ttk_widget(child, colors)
+        elif isinstance(child, ttk.Label):
+            _apply_theme_to_ttk_widget(child, colors)
+        elif isinstance(child, tk.Button):
+            _apply_theme_to_ttk_widget(child, colors)
+        elif isinstance(child, ttk.Checkbutton) or isinstance(child, ttk.Radiobutton):
+            _apply_theme_to_ttk_widget(child, colors)
+        
+        # Continue recursion
+        if hasattr(child, 'winfo_children') and callable(child.winfo_children):
+            _apply_theme_to_children(child, colors)
+
+def _apply_theme_to_ttk_widget(widget, colors):
+    """Apply theme to a specific ttk widget"""
+    try:
+        if isinstance(widget, ttk.Button):
+            # Default style based on class name
+            style_name = widget.winfo_class()
+            if hasattr(widget, 'cget') and widget.cget('style'):
+                # If a style is already set, use that
+                style_name = widget.cget('style')
+            # Apply colors to this style
+            style = ttk.Style()
+            style.configure(style_name, 
+                            background=colors["bg_light"],
+                            foreground=colors["text_primary"])
+            
+        elif isinstance(widget, ttk.Label):
+            # Do not try to create custom styles for standard labels
+            return
+            
+        elif isinstance(widget, ttk.Entry):
+            # For entries, we create a new custom style with a unique ID
+            style_name = f"Custom.TEntry.{id(widget)}"
+            style = ttk.Style()
+            style.configure(style_name, 
+                          fieldbackground=colors["bg_input"],
+                          foreground=colors["text_primary"])
+            
+        elif isinstance(widget, ttk.Frame):
+            # Check if it's a specialized frame with a style
+            if hasattr(widget, 'cget') and widget.cget('style'):
+                return  # Let the main theme function handle specialized frames
+            # Default frame style
+            style_name = "TFrame"
+            
+        else:
+            # For other ttk widgets, see if they have a style attribute
+            # but don't try to modify it if they don't
+            if not hasattr(widget, 'cget') or not hasattr(widget, 'configure'):
+                return
+                
+            try:
+                current_style = widget.cget('style')
+                if current_style:
+                    # Widget has a style, but don't try to modify it here
+                    return
+            except tk.TclError:
+                # Widget doesn't support the 'style' option
+                return
+                
+            # Default case - use the widget class
+            style_name = widget.winfo_class()
+            
+        # Only apply style if we got this far and the widget supports it
+        if hasattr(widget, 'configure'):
+            try:
+                widget.configure(style=style_name)
+            except tk.TclError:
+                # Style configuration failed - this is ok, just continue
+                pass
+                
+    except (tk.TclError, AttributeError) as e:
+        # Some widgets may not support all configurations
+        pass
+
+def create_centered_dialog(parent, title, min_width=400, min_height=300, padding=20, topmost=True, grab=True, parent_window=None):
+    """Create a dialog window centered on screen with proper styling"""
+    if parent_window is None:
+        parent_window = parent  # Default to parent
+    
+    # Get the colors based on dark mode state
+    is_dark = CURRENT_COLORS == DARK_COLORS
+    bg_color = DARK_COLORS["bg_light"] if is_dark else COLORS["bg_light"]
+    
+    # Create dialog window
+    dialog = tk.Toplevel(parent_window)
+    dialog.title(title)
+    dialog.resizable(True, True)
+    dialog.configure(bg=bg_color)
+    
+    # Window behavior settings - remove grab_set from here
+    dialog.transient(parent)
+    # Don't grab here - moved to after positioning
+    dialog.lift()
+    dialog.focus_force()
+    if topmost:
+        dialog.attributes("-topmost", True)
+    
+    # Create main frame with padding to hold content
+    main_frame = ttk.Frame(dialog, style="TFrame", padding=padding)
+    main_frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Position: first off-screen to avoid flicker
+    dialog.geometry(f"+{-1000}+{-1000}")
+    
+    # Temporarily disable theme application to avoid errors
+    # Apply theme if in dark mode
+    #if is_dark:
+    #    # Set up Radiobutton style explicitly
+    #    style = ttk.Style()
+    #    style.configure("TRadiobutton", 
+    #                  background=DARK_COLORS["bg_light"],
+    #                  foreground=DARK_COLORS["text_primary"])
+    #    style.map("TRadiobutton",
+    #             background=[("active", DARK_COLORS["bg_light"])],
+    #             foreground=[("active", DARK_COLORS["accent_primary"])])
+    #             
+    #    apply_theme_to_toplevel(dialog, True)
+    
+    # Trick to defer size calculation until after dialog is populated with content
+    def position_dialog():
+        dialog.update_idletasks()
+        
+        # Get dialog's requested size based on its contents
+        width = max(dialog.winfo_reqwidth(), min_width)
+        height = max(dialog.winfo_reqheight(), min_height)
+        
+        # Center on screen
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        
+        # Set final position and size 
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Now that the window is positioned and visible, set grab
+        if grab:
+            dialog.grab_set()
+    
+    # Schedule positioning after main loop is idle (contents will be packed)
+    dialog.after(10, position_dialog)
+    
+    return dialog, main_frame
 
 def toggle_theme(app):
     """Toggle between light and dark mode"""
@@ -858,12 +1027,30 @@ def toggle_theme(app):
     # Switch to the other theme
     if CURRENT_COLORS == COLORS:
         CURRENT_COLORS = DARK_COLORS.copy()
-        app.theme_btn.config(text="☀️")  # Sun emoji for light mode
+        app.theme_btn.config(text="☀️")
         app.is_dark_mode = True
+        
+        # Ensure radio buttons are styled properly in dark mode
+        style = ttk.Style()
+        style.configure("TRadiobutton", 
+                       background=DARK_COLORS["bg_light"],
+                       foreground=DARK_COLORS["text_primary"])
+        style.map("TRadiobutton",
+                 background=[("active", DARK_COLORS["bg_light"])],
+                 foreground=[("active", DARK_COLORS["accent_primary"])])
     else:
         CURRENT_COLORS = COLORS.copy()
-        app.theme_btn.config(text="🌙")  # Moon emoji for dark mode
+        app.theme_btn.config(text="🌙")
         app.is_dark_mode = False
+        
+        # Reset radio button styling for light mode
+        style = ttk.Style()
+        style.configure("TRadiobutton", 
+                       background=COLORS["bg_light"],
+                       foreground=COLORS["text_primary"])
+        style.map("TRadiobutton",
+                 background=[("active", COLORS["bg_light"])],
+                 foreground=[("active", COLORS["accent_primary"])])
     
     # Apply the new theme
     apply_theme(app)

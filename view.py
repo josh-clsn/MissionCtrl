@@ -11,11 +11,11 @@ from pathlib import Path
 import platform
 import base64
 import math
-import magic  # Library for MIME type detection
-import gui # Add gui import
-import pygame # Add pygame for audio
-import threading # Add threading for audio playback
-import tempfile # Add tempfile for video playback
+import magic
+import gui
+import pygame
+import threading
+import tempfile
 
 logger = logging.getLogger("MissionCtrl")
 
@@ -126,34 +126,13 @@ def detect_and_display_content(app, data, parent_frame, filename="data"):
             
     elif mime_type == 'text/plain':
         try:
-            # Create text preview with syntax highlighting
-            text_frame = ttk.Frame(content_container, style="TFrame")
-            text_frame.pack(fill=tk.BOTH, expand=True)
+            # Create text preview with full height and width
+            text_container = ttk.Frame(content_container, style="TFrame")
+            text_container.pack(fill=tk.BOTH, expand=True)
             
-            text_widget = tk.Text(text_frame, wrap=tk.WORD, height=15, width=80,
-                               font=("Inter Mono", 10),
-                               bg=COLORS["bg_secondary"],
-                               fg=COLORS["text_primary"],
-                               padx=10, pady=10,
-                               relief="flat")
-            text_widget.pack(fill=tk.BOTH, expand=True)
-            
-            # Create scrollbar
-            scrollbar = ttk.Scrollbar(text_widget, orient="vertical", command=text_widget.yview)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            text_widget.config(yscrollcommand=scrollbar.set)
-            
-            # Insert text content
-            text_widget.insert(tk.END, data.decode('utf-8'))
-            text_widget.config(state=tk.DISABLED)
-            
-            # Add context menu
-            from gui import add_context_menu 
-            add_context_menu(text_widget)
-            
-            # Add info footer
-            info_frame = ttk.Frame(content_container, style="TFrame")
-            info_frame.pack(fill=tk.X, pady=(10, 0))
+            # File info header
+            info_frame = ttk.Frame(text_container, style="TFrame")
+            info_frame.pack(fill=tk.X, pady=(0, 5))
             
             # Add file type badge
             type_badge = ttk.Label(info_frame, text="TEXT", 
@@ -172,6 +151,31 @@ def detect_and_display_content(app, data, parent_frame, filename="data"):
             ttk.Label(info_frame, text=size_text, 
                     foreground=COLORS["text_secondary"],
                     padding=(10, 0)).pack(side=tk.RIGHT)
+            
+            # Create the text widget that takes the full container size
+            text_frame = ttk.Frame(text_container, style="TFrame")
+            text_frame.pack(fill=tk.BOTH, expand=True)
+            
+            text_widget = tk.Text(text_frame, wrap=tk.WORD,
+                               font=("Inter Mono", 11),
+                               bg=COLORS["bg_secondary"],
+                               fg=COLORS["text_primary"],
+                               padx=15, pady=15,
+                               relief="flat")
+            text_widget.pack(fill=tk.BOTH, expand=True)
+            
+            # Create scrollbar
+            scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            text_widget.config(yscrollcommand=scrollbar.set)
+            
+            # Insert text content
+            text_widget.insert(tk.END, data.decode('utf-8'))
+            text_widget.config(state=tk.DISABLED)
+            
+            # Add context menu
+            from gui import add_context_menu 
+            add_context_menu(text_widget)
             
         except Exception as e:
             logger.error("Failed to load text: %s", e)
@@ -258,7 +262,8 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
     view_window = tk.Toplevel(app.root)
     view_window.title("Retrieved Data - Mission Ctrl")
     view_window.resizable(True, True)
-    view_window.configure(bg=gui.CURRENT_COLORS["bg_light"]) # Use gui.CURRENT_COLORS
+    view_window.configure(bg=gui.CURRENT_COLORS["bg_light"])
+    view_window.geometry("1100x800")
 
     # Apply theme if dark mode is enabled
     if hasattr(app, 'is_dark_mode') and app.is_dark_mode:
@@ -284,118 +289,89 @@ def show_data_window(app, data, is_private, archive=None, is_single_chunk=False,
         
     ttk.Label(header_frame, text=title_text, 
             font=("Inter", 16, "bold"), 
-            foreground=gui.CURRENT_COLORS["accent_primary"]).pack(anchor="w") # Use gui.CURRENT_COLORS
+            foreground=gui.CURRENT_COLORS["accent_primary"]).pack(anchor="w")
 
-    content_frame = ttk.Frame(main_frame, style="Card.TFrame", padding="20")
-    content_frame.pack(fill=tk.BOTH, expand=True)
+    # For single chunks and private data, use the improved direct viewing
+    if is_private or is_single_chunk:
+        content_frame = ttk.Frame(main_frame, style="Card.TFrame")
+        content_frame.pack(fill=tk.BOTH, expand=True)
+        detect_and_display_content(app, data, content_frame)
+    else:
+        # For archives, use the original scrollable approach
+        content_frame = ttk.Frame(main_frame, style="Card.TFrame", padding="20")
+        content_frame.pack(fill=tk.BOTH, expand=True)
 
-    canvas = tk.Canvas(content_frame, bg=gui.CURRENT_COLORS["bg_light"], # Use gui.CURRENT_COLORS
-                     bd=0, highlightthickness=0)
-    scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
-    scrollable_frame = ttk.Frame(canvas, style="TFrame")
-    
-    canvas.configure(yscrollcommand=scrollbar.set)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    
-    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas = tk.Canvas(content_frame, bg=gui.CURRENT_COLORS["bg_light"],
+                         bd=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, style="TFrame")
+        
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
-    # Content display based on type
-    if is_private and archive:
-        file_list = list(archive.files())
+        # Content display for archives
+        file_list = list(archive.files()) if archive else []
         if not file_list:
             ttk.Label(scrollable_frame, text="No files found in archive.", 
-                    foreground=gui.CURRENT_COLORS["text_secondary"]).pack(pady=10) # Use gui.CURRENT_COLORS
+                    foreground=gui.CURRENT_COLORS["text_secondary"]).pack(pady=10)
         else:
-            for path, metadata in file_list:
-                item_frame = ttk.Frame(scrollable_frame, style="TFrame")
-                item_frame.pack(fill=tk.X, pady=5, padx=5)
+            chunk_addresses = list(archive.addresses()) if archive else []
+            file_names = [item[0] for item in file_list]
+            
+            for name, addr in zip(file_names, chunk_addresses):
+                item_frame = ttk.Frame(scrollable_frame, style="TFrame", padding=5)
+                item_frame.pack(fill=tk.X, pady=3)
                 
                 file_icon = "📄 "  # Default file icon
-                if path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                if name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
                     file_icon = "🖼️ "
-                elif path.lower().endswith(('.mp4', '.mov', '.avi')):
+                elif name.lower().endswith(('.mp4', '.mov', '.avi')):
                     file_icon = "🎬 "
-                elif path.lower().endswith(('.mp3', '.wav', '.ogg')):
+                elif name.lower().endswith(('.mp3', '.wav', '.ogg')):
                     file_icon = "🎵 "
-                elif path.lower().endswith(('.pdf')):
+                elif name.lower().endswith(('.pdf')):
                     file_icon = "📕 "
-                elif path.lower().endswith(('.zip', '.tar', '.gz')):
+                elif name.lower().endswith(('.zip', '.tar', '.gz')):
                     file_icon = "🗜️ "
                 
-                ttk.Label(item_frame, text=f"{file_icon}{path}", 
-                        font=("Inter", 11)).pack(side=tk.LEFT, padx=5)
-                ttk.Label(item_frame, text=f"{metadata.size} bytes", 
-                        foreground=gui.CURRENT_COLORS["text_secondary"]).pack(side=tk.RIGHT, padx=5) # Use gui.CURRENT_COLORS
-    
-    elif is_private:
-        detect_and_display_content(app, data, scrollable_frame)
-    
-    else:
-        if is_single_chunk:
-            detect_and_display_content(app, data, scrollable_frame)
-        else:
-            file_list = list(archive.files()) if archive else []
-            if not file_list:
-                ttk.Label(scrollable_frame, text="No files found in archive.", 
-                        foreground=gui.CURRENT_COLORS["text_secondary"]).pack(pady=10) # Use gui.CURRENT_COLORS
-            else:
-                chunk_addresses = list(archive.addresses()) if archive else []
-                file_names = [item[0] for item in file_list]
+                info_frame = ttk.Frame(item_frame, style="TFrame")
+                info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
                 
-                for name, addr in zip(file_names, chunk_addresses):
-                    item_frame = ttk.Frame(scrollable_frame, style="TFrame", padding=5)
-                    item_frame.pack(fill=tk.X, pady=3)
-                    
-                    file_icon = "📄 "  # Default file icon
-                    if name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        file_icon = "🖼️ "
-                    elif name.lower().endswith(('.mp4', '.mov', '.avi')):
-                        file_icon = "🎬 "
-                    elif name.lower().endswith(('.mp3', '.wav', '.ogg')):
-                        file_icon = "🎵 "
-                    elif name.lower().endswith(('.pdf')):
-                        file_icon = "📕 "
-                    elif name.lower().endswith(('.zip', '.tar', '.gz')):
-                        file_icon = "🗜️ "
-                    
-                    info_frame = ttk.Frame(item_frame, style="TFrame")
-                    info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-                    
-                    ttk.Label(info_frame, text=f"{file_icon}{name}", 
-                            font=("Inter", 11)).pack(anchor="w")
-                    ttk.Label(info_frame, text=f"Address: {addr}", 
-                            foreground=gui.CURRENT_COLORS["text_secondary"], # Use gui.CURRENT_COLORS
-                            font=("Inter", 9)).pack(anchor="w")
-                    
-                    action_frame = ttk.Frame(item_frame, style="TFrame")
-                    action_frame.pack(side=tk.RIGHT)
-                    
-                    loading_label = ttk.Label(action_frame, text="")
-                    loading_label.pack(side=tk.LEFT, padx=5)
+                ttk.Label(info_frame, text=f"{file_icon}{name}", 
+                        font=("Inter", 11)).pack(anchor="w")
+                ttk.Label(info_frame, text=f"Address: {addr}", 
+                        foreground=gui.CURRENT_COLORS["text_secondary"],
+                        font=("Inter", 9)).pack(anchor="w")
+                
+                action_frame = ttk.Frame(item_frame, style="TFrame")
+                action_frame.pack(side=tk.RIGHT)
+                
+                loading_label = ttk.Label(action_frame, text="")
+                loading_label.pack(side=tk.LEFT, padx=5)
 
-                    # Check file type for action button
-                    is_audio = name.lower().endswith(AUDIO_EXTENSIONS)
-                    is_video = name.lower().endswith(VIDEO_EXTENSIONS)
+                # Check file type for action button
+                is_audio = name.lower().endswith(AUDIO_EXTENSIONS)
+                is_video = name.lower().endswith(VIDEO_EXTENSIONS)
 
-                    if is_audio:
-                        button_text = "Play"
-                        command_func = play_audio
-                    elif is_video:
-                        button_text = "Play"
-                        command_func = play_video # New function for video
-                    else:
-                        button_text = "View"
-                        command_func = view_file
+                if is_audio:
+                    button_text = "Play"
+                    command_func = play_audio
+                elif is_video:
+                    button_text = "Play"
+                    command_func = play_video
+                else:
+                    button_text = "View"
+                    command_func = view_file
 
-                    action_button = ttk.Button(action_frame, text=button_text, style="Secondary.TButton", width=8)
-                    # Assign the command using a lambda that captures the current loop variables correctly
-                    action_button.config(command=lambda cmd=command_func, b=action_button, a=addr, n=name, l=loading_label:
-                                         cmd(app, a, n, b, l))
-                    action_button.pack(side=tk.LEFT, padx=5)
-
-    content_frame.update_idletasks()
+                action_button = ttk.Button(action_frame, text=button_text, style="Secondary.TButton", width=8)
+                # Assign the command using a lambda that captures the current loop variables correctly
+                action_button.config(command=lambda cmd=command_func, b=action_button, a=addr, n=name, l=loading_label:
+                                     cmd(app, a, n, b, l))
+                action_button.pack(side=tk.LEFT, padx=5)
 
     # Button frame at bottom
     button_frame = ttk.Frame(main_frame, style="TFrame", padding=(0, 15, 0, 0))
@@ -565,15 +541,44 @@ def view_file(app, addr, name, button, loading_label):
             file_data = await app.client.data_get_public(addr)
             sub_window = tk.Toplevel(app.root)
             sub_window.title(f"View {name}")
+            sub_window.geometry("900x700")  # Set a larger initial window size
 
             # Apply theme if dark mode is enabled
             if hasattr(app, 'is_dark_mode') and app.is_dark_mode:
                 gui.apply_theme_to_toplevel(sub_window, True)
             
-            sub_frame = ttk.Frame(sub_window)
-            sub_frame.pack(fill=tk.BOTH, expand=True)
-            detect_and_display_content(app, file_data, sub_frame, name)
-            ttk.Button(sub_window, text="Close", command=sub_window.destroy).pack(pady=5)
+            main_frame = ttk.Frame(sub_window, padding=10)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Add a header with filename
+            header_frame = ttk.Frame(main_frame)
+            header_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            ttk.Label(header_frame, text=name, 
+                    font=("Inter", 14, "bold"),
+                    foreground=gui.CURRENT_COLORS["accent_primary"]).pack(anchor="w")
+            
+            # Content frame to hold the file display
+            content_frame = ttk.Frame(main_frame)
+            content_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Use the detect_and_display_content function to render the file
+            detect_and_display_content(app, file_data, content_frame, name)
+            
+            # Footer with close button
+            footer_frame = ttk.Frame(main_frame, padding=(0, 10, 0, 0))
+            footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
+            
+            ttk.Button(footer_frame, text="Close", 
+                     command=sub_window.destroy,
+                     style="Secondary.TButton").pack(side=tk.RIGHT)
+            
+            # Add save button
+            save_btn = ttk.Button(footer_frame, text="Save", 
+                               command=lambda: save_viewed_file(file_data, name, sub_window),
+                               style="Accent.TButton")
+            save_btn.pack(side=tk.RIGHT, padx=(0, 10))
+            
         except Exception as e:
             import traceback
             logger.error("Failed to view %s: %s\n%s", name, e, traceback.format_exc())
@@ -585,6 +590,26 @@ def view_file(app, addr, name, button, loading_label):
             loading_label.update_idletasks()
     
     asyncio.run_coroutine_threadsafe(_view(), app.loop)
+
+def save_viewed_file(data, filename, parent_window):
+    """Save a file that's being viewed."""
+    save_path = filedialog.asksaveasfilename(
+        parent=parent_window,
+        initialfile=filename,
+        initialdir=get_downloads_folder(),
+        defaultextension=".*",
+        filetypes=[("All files", "*.*")],
+        title=f"Save {filename}"
+    )
+    if save_path:
+        try:
+            with open(save_path, "wb") as f:
+                f.write(data)
+            messagebox.showinfo("Success", f"File saved to {save_path}", parent=parent_window)
+        except Exception as ex:
+            import traceback
+            logger.error("Failed to save file: %s\n%s", ex, traceback.format_exc())
+            messagebox.showerror("Error", f"Failed to save file: {ex}\nDetails: {traceback.format_exc()}", parent=parent_window)
 
 def play_audio(app, address, filename, button, loading_label):
     """Initiates fetching audio data and opening the player."""
@@ -719,14 +744,13 @@ def open_audio_player(app, audio_data, filename):
         nonlocal playback_thread, paused
         logger.info("Stopping music")
         pygame.mixer.music.stop()
-        pygame.mixer.music.unload() # Unload the current stream
+        pygame.mixer.music.unload()
         paused = False 
-        playback_thread = None # Allow thread to exit if running
+        playback_thread = None
         status_label.config(text="Stopped")
-        play_pause_button.config(text="Play", state=tk.DISABLED) # Disable play until reloaded if needed
+        play_pause_button.config(text="Play", state=tk.DISABLED)
         stop_button.config(state=tk.DISABLED)
-        # Optionally close window on stop, or require manual close:
-        # player_window.destroy() 
+
 
     play_pause_button = ttk.Button(button_frame, text="Play", command=play_music, width=10)
     play_pause_button.pack(side=tk.LEFT, padx=5)
@@ -736,7 +760,7 @@ def open_audio_player(app, audio_data, filename):
 
     def on_close():
         logger.info("Closing player window")
-        stop_music() # Ensure music stops
+        stop_music() 
         try:
             # Important: Quit mixer only when completely done
             # If other players might exist, this needs more careful management
