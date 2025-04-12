@@ -60,7 +60,7 @@ class TestApp:
         self.wallet = None
         self.is_public_var = tk.BooleanVar(value=False)
         self.is_private_var = tk.BooleanVar(value=False)
-        self.perform_cost_calc_var = tk.BooleanVar(value=True)
+        self.perform_cost_calc_var = tk.BooleanVar(value=False)
         self.loop = None
         self.is_processing = False
         self._current_operation = None
@@ -75,6 +75,22 @@ class TestApp:
         self.eth_price_usd = 0.0
         self.balance_history = deque(maxlen=50)
         self.dark_mode_enabled = True
+        
+        # Spending limit variables
+        self.max_spend_ant = 0.0  # No limit by default
+        self.max_spend_eth = 0.0  # No limit by default
+        self.max_spend_usd = 0.0  # No limit by default
+        self.spent_ant_session = 0.0  # Track spending in current session
+        self.spent_eth_session = 0.0  # Track spending in current session
+        self.enforce_spending_limits = tk.BooleanVar(value=False)
+        
+        # Initial balance tracking for session spending calculation
+        self.initial_ant_balance = None
+        self.initial_eth_balance = None
+        
+        # Session start timestamp and verification
+        self.session_start_time = datetime.datetime.now()
+        self.spending_verification_task = None
         
         self.load_persistent_data()
 
@@ -145,6 +161,33 @@ class TestApp:
 
     def on_closing(self):
         self.save_persistent_data()
+        
+        # Cancel all scheduled callbacks before closing
+        if hasattr(self, 'status_update_task') and self.status_update_task:
+            self.root.after_cancel(self.status_update_task)
+            self.status_update_task = None
+        
+        # Cancel session spending display update
+        if hasattr(self, 'session_spending_update_task'):
+            self.root.after_cancel(self.session_spending_update_task)
+            self.session_spending_update_task = None
+        
+        # Cancel connection dot animation
+        if hasattr(self, 'connection_animation_task'):
+            self.root.after_cancel(self.connection_animation_task)
+            self.connection_animation_task = None
+            
+        # Cancel spending verification task
+        if hasattr(self, 'spending_verification_task') and self.spending_verification_task:
+            self.root.after_cancel(self.spending_verification_task)
+            self.spending_verification_task = None
+        
+        # Cancel any other scheduled tasks by name
+        for task_name in ['balance_update_task', 'price_update_task']:
+            if hasattr(self, task_name) and getattr(self, task_name):
+                self.root.after_cancel(getattr(self, task_name))
+                setattr(self, task_name, None)
+        
         if self.loop:
             self.loop.call_soon_threadsafe(self.loop.stop)
         self.root.destroy()
@@ -162,6 +205,15 @@ class TestApp:
         
         # Initialize price display
         self.root.after(1500, self._initial_price_display)
+        
+        # Load transaction history at startup
+        self.root.after(2000, self._update_balance_history_display)
+        
+        # Start spending verification if limits are enabled
+        if self.enforce_spending_limits.get():
+            self.session_start_time = datetime.datetime.now()
+            self.logger.info(f"Starting spending verification at {self.session_start_time}")
+            self.root.after(5000, self.verify_session_spending)
         
         self.root.deiconify()
 
@@ -411,6 +463,31 @@ class TestApp:
                 self.uploaded_private_files = [(item["filename"], item["access_token"]) for item in data.get("uploaded_private_files", [])]
                 self.dark_mode_enabled = data.get("dark_mode_enabled", False)
                 
+                # Load spending limits - only dollar values
+                self.max_spend_usd = data.get("max_spend_usd", 0.0)
+                self.ant_limit_usd = data.get("ant_limit_usd", 0.0)
+                self.eth_limit_usd = data.get("eth_limit_usd", 0.0)
+                
+                # Load saved crypto prices if available
+                if "ant_price_usd" in data and data["ant_price_usd"] > 0:
+                    self.ant_price_usd = data["ant_price_usd"]
+                if "eth_price_usd" in data and data["eth_price_usd"] > 0:
+                    self.eth_price_usd = data["eth_price_usd"]
+                
+                # Calculate token amounts from dollar values
+                if self.ant_price_usd > 0:
+                    self.max_spend_ant = self.ant_limit_usd / self.ant_price_usd
+                else:
+                    self.max_spend_ant = 0.0
+                    
+                if self.eth_price_usd > 0:
+                    self.max_spend_eth = self.eth_limit_usd / self.eth_price_usd
+                else:
+                    self.max_spend_eth = 0.0
+                
+                # Load enforcement setting
+                self.enforce_spending_limits = tk.BooleanVar(value=data.get("enforce_spending_limits", False))
+                
                 # Load balance history as a deque if present
                 if "balance_history" in data:
                     # Convert string timestamps back to datetime objects
@@ -431,12 +508,25 @@ class TestApp:
                 else:
                     self.balance_history = deque(maxlen=50)
                 
-                # Load saved crypto prices if available
-                if "ant_price_usd" in data and data["ant_price_usd"] > 0:
-                    self.ant_price_usd = data["ant_price_usd"]
-                if "eth_price_usd" in data and data["eth_price_usd"] > 0:
-                    self.eth_price_usd = data["eth_price_usd"]
-                    
+                # Initial balance tracking for session spending calculation
+                self.initial_ant_balance = data.get("initial_ant_balance", 0.0)
+                self.initial_eth_balance = data.get("initial_eth_balance", 0.0)
+                
+                # Load session start time
+                session_start_iso = data.get("session_start_time")
+                if session_start_iso:
+                    try:
+                        self.session_start_time = datetime.datetime.fromisoformat(session_start_iso)
+                        self.logger.info(f"Loaded session start time: {self.session_start_time}")
+                    except (ValueError, TypeError):
+                        # If timestamp format is invalid, use current time
+                        self.session_start_time = datetime.datetime.now()
+                        self.logger.warning(f"Invalid session start time format, resetting to now: {self.session_start_time}")
+                else:
+                    # If no saved timestamp, use current time
+                    self.session_start_time = datetime.datetime.now()
+                    self.logger.info(f"No saved session start time, using current time: {self.session_start_time}")
+                
                 self.logger.info("Loaded persistent data from %s", self.data_file)
         except Exception as e:
             self.logger.error("Failed to load persistent data: %s", e)
@@ -460,6 +550,9 @@ class TestApp:
                     serialized_record['timestamp'] = serialized_record['timestamp'].isoformat()
                 serializable_history.append(serialized_record)
             
+            # Convert session_start_time to string for storage
+            session_start_iso = self.session_start_time.isoformat() if hasattr(self, 'session_start_time') else None
+            
             data = {
                 "uploaded_files": [{"filename": f, "chunk_addr": a} for f, a in self.uploaded_files],
                 "local_archives": [{"addr": a, "nickname": n, "is_private": p} for a, n, p in self.local_archives],
@@ -469,7 +562,17 @@ class TestApp:
                 "dark_mode_enabled": self.dark_mode_enabled,  # Save dark mode preference
                 "ant_price_usd": self.ant_price_usd,  # Save current ANT price
                 "eth_price_usd": self.eth_price_usd,   # Save current ETH price
-                "balance_history": serializable_history  # Use the version with string timestamps
+                "balance_history": serializable_history,  # Use the version with string timestamps
+                # Save spending limits - only dollar values, not token amounts
+                "max_spend_usd": self.max_spend_usd,
+                "ant_limit_usd": getattr(self, 'ant_limit_usd', 0.0), 
+                "eth_limit_usd": getattr(self, 'eth_limit_usd', 0.0),
+                "enforce_spending_limits": self.enforce_spending_limits.get(),
+                # Initial balance tracking for session spending calculation
+                "initial_ant_balance": self.initial_ant_balance,
+                "initial_eth_balance": self.initial_eth_balance,
+                # Session start time
+                "session_start_time": session_start_iso
             }
             with open(self.data_file, 'w') as f:
                 json.dump(data, f, indent=4)
@@ -480,7 +583,7 @@ class TestApp:
     def update_balances(self):
         if self.wallet:
             asyncio.run_coroutine_threadsafe(self._update_balances(), self.loop)
-        self.root.after(300000, self.update_balances)  # 5 minutes
+        self.balance_update_task = self.root.after(300000, self.update_balances)  # 5 minutes
 
     async def _update_balances(self):
         """Updates wallet balances asynchronously"""
@@ -500,6 +603,26 @@ class TestApp:
             # Convert to floats for display
             ant_balance_float = ant_balance / 10**18
             eth_balance_float = eth_balance / 10**18
+            
+            # Record initial balances if not set yet
+            if self.initial_ant_balance is None:
+                self.initial_ant_balance = ant_balance_float
+                self.logger.info(f"Initial ANT balance recorded: {self.initial_ant_balance:.10f}")
+                
+            if self.initial_eth_balance is None:
+                self.initial_eth_balance = eth_balance_float
+                self.logger.info(f"Initial ETH balance recorded: {self.initial_eth_balance:.10f}")
+                
+            # Calculate session spending based on balance difference
+            if self.initial_ant_balance is not None:
+                self.spent_ant_session = max(0, self.initial_ant_balance - ant_balance_float)
+                
+            if self.initial_eth_balance is not None:
+                self.spent_eth_session = max(0, self.initial_eth_balance - eth_balance_float)
+            
+            # Update spending display if the method exists
+            if hasattr(self, 'update_session_spending_display'):
+                self.root.after(0, self.update_session_spending_display)
              
             # Calculate USD values
             ant_usd_value = ant_balance_float * self.ant_price_usd
@@ -634,6 +757,9 @@ class TestApp:
                     else:
                         self.logger.warning("ANT price not found or invalid in API response")
                     
+                    # Recalculate token limits based on new prices
+                    self._recalculate_token_limits()
+                    
                     # After successful API call, save the updated prices
                     self.save_persistent_data()
                     
@@ -663,6 +789,17 @@ class TestApp:
         except Exception as e:
             self.logger.error(f"Failed to update crypto prices: {str(e)}")
             self.logger.error(f"Exception details: {traceback.format_exc()}")
+            
+    def _recalculate_token_limits(self):
+        """Recalculate token limits based on current prices"""
+        # Convert dollar limits to token limits using current exchange rates
+        if hasattr(self, 'ant_limit_usd') and self.ant_price_usd > 0:
+            self.max_spend_ant = self.ant_limit_usd / self.ant_price_usd
+            self.logger.info(f"Recalculated ANT limit: ${self.ant_limit_usd} = {self.max_spend_ant:.8f} ANT")
+            
+        if hasattr(self, 'eth_limit_usd') and self.eth_price_usd > 0:
+            self.max_spend_eth = self.eth_limit_usd / self.eth_price_usd
+            self.logger.info(f"Recalculated ETH limit: ${self.eth_limit_usd} = {self.max_spend_eth:.8f} ETH")
 
     def _update_price_display(self, previous_ant_price, previous_eth_price):
         """Update price display with appropriate colors based on price movement"""
@@ -737,19 +874,24 @@ class TestApp:
             
             # Add each history entry
             for i, record in enumerate(self.balance_history):
-                if i >= 5:  # Only show last 5
+                if i >= 10:  # Only show last 10
                     break
                     
-                # Format timestamp
-                time_str = record['timestamp'].strftime("%H:%M:%S")
+                # Format timestamp with date and time
+                now = datetime.datetime.now()
+                timestamp = record['timestamp']
+                
+                # Always show full date and time for easier debugging
+                # This helps verify which transactions are within the session timeframe
+                time_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
                 
                 # Format the change entry
                 if record['ant_change'] != 0 or record['eth_change'] != 0:
                     change_frame = ttk.Frame(self.balance_history_frame, style="TFrame")
                     change_frame.pack(fill=tk.X, pady=(5, 0))
                     
-                    # Time stamp
-                    ttk.Label(change_frame, text=time_str, width=10,
+                    # Time stamp - widen for date and time
+                    ttk.Label(change_frame, text=time_str, width=20,
                            font=("Inter", 9), foreground=gui.CURRENT_COLORS["text_secondary"]).pack(side=tk.LEFT)
                     
                     # ANT change
@@ -968,6 +1110,46 @@ class TestApp:
             
             self.root.after(0, lambda: self.status_label.config(text=f"Uploading file {current_index} of {total_files}: {filename}"))
             
+            # Check spending limits first, separately from cost calculation
+            if self.enforce_spending_limits.get():
+                # Check if any limits have been reached based on accumulated spending
+                can_proceed, limit_message = self.check_spending_limits(0, True)
+                if not can_proceed:
+                    self.logger.info(f"Queue upload paused - spending limit reached: {limit_message}")
+                    self.root.after(0, lambda: self.status_label.config(text=f"Queue paused - spending limit reached"))
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Spending Limit Reached", 
+                        f"{limit_message}\n\nUpload queue has been paused. "
+                        "Please increase your spending limit in Settings before continuing."
+                    ))
+                    self.is_processing = False
+                    self.stop_status_animation()
+                    return
+            
+            # Optional cost calculation (separate feature)
+            if self.perform_cost_calc_var.get():
+                try:
+                    # Read the file data
+                    with open(file_path, "rb") as f:
+                        file_data = f.read()
+                    
+                    # Get cost estimate
+                    self._current_operation = 'cost_calc'
+                    self.root.after(0, lambda: self.status_label.config(text=f"Getting quote for {filename}..."))
+                    
+                    try:
+                        estimated_cost = await asyncio.wait_for(
+                            self.client.data_cost(file_data),
+                            timeout=1000
+                        )
+                        self.logger.info(f"Queue item estimated cost: {estimated_cost} ANT")
+                    except asyncio.TimeoutError:
+                        self.logger.error("Cost calculation timed out for queue item")
+                        # Continue anyway as we can't get an estimate
+                except Exception as e:
+                    self.logger.error(f"Error estimating cost for queue item: {e}")
+                    # Continue anyway as we can't get an estimate
+            
             # Try to upload with error handling
             try:
                 if upload_type == "public":
@@ -975,9 +1157,14 @@ class TestApp:
                 else:
                     result = await private.upload_private(self, file_path, from_queue=True)
                 
-                successful += 1
-                file_status.append((filename, True, "Success"))
-                self.logger.info(f"Queue upload successful: {filename}")
+                if result:  # True means successful upload
+                    successful += 1
+                    file_status.append((filename, True, "Success"))
+                    self.logger.info(f"Queue upload successful: {filename}")
+                else:  # False means failed upload
+                    failed += 1
+                    file_status.append((filename, False, "Failed"))
+                    self.logger.error(f"Queue upload failed for {filename}")
             except Exception as e:
                 failed += 1
                 error_message = str(e)
@@ -1032,7 +1219,7 @@ class TestApp:
                 widget.destroy()
                 
             # Show loading message
-            ttk.Label(self.file_content_frame, text="Loading public data...", style="Italic.TLabel").pack(anchor="w", pady=10)
+            ttk.Label(self.file_content_frame, text="Public data", style="Italic.TLabel").pack(anchor="w", pady=10)
             self.root.after(100, lambda: public.display_public_files(self, self.file_content_frame))
         else:
             public.manage_public_files(self)
@@ -1050,7 +1237,7 @@ class TestApp:
                 widget.destroy()
                 
             # Show loading message
-            ttk.Label(self.file_content_frame, text="Loading private data...", style="Italic.TLabel").pack(anchor="w", pady=10)
+            ttk.Label(self.file_content_frame, text="Private data", style="Italic.TLabel").pack(anchor="w", pady=10)
             self.root.after(100, lambda: private.display_private_files(self, self.file_content_frame))
         else:
             private.manage_private_files(self)
@@ -1159,6 +1346,476 @@ class TestApp:
         self.root.after(0, lambda: self.status_label.config(
             text=f"Queue processing completed - Success: {successful}, Failed: {failed}")
         )
+
+    def check_spending_limits(self, estimated_cost_ant=0, is_queue=False, estimated_cost_eth=0):
+        """
+        Check if the accumulated spending exceeds user limits
+        
+        Args:
+            estimated_cost_ant: Additional ANT to consider (default 0)
+            is_queue: Whether this is a queue operation
+            estimated_cost_eth: Additional ETH to consider (default 0)
+            
+        Returns:
+            (bool, str): Tuple of (can_proceed, message)
+        """
+        if not self.enforce_spending_limits.get():
+            return True, ""
+        
+        # Get current accumulated spending
+        current_ant_spent = self.spent_ant_session
+        current_eth_spent = self.spent_eth_session
+            
+        # Convert current spending to USD
+        current_usd_spent_ant = current_ant_spent * self.ant_price_usd
+        current_usd_spent_eth = current_eth_spent * self.eth_price_usd
+        current_usd_spent_total = current_usd_spent_ant + current_usd_spent_eth
+        
+        # Add estimates (if any) to current totals
+        total_ant = current_ant_spent + estimated_cost_ant
+        total_eth = current_eth_spent + estimated_cost_eth
+        total_usd = current_usd_spent_total + (estimated_cost_ant * self.ant_price_usd) + (estimated_cost_eth * self.eth_price_usd)
+        
+        # Check ANT limit
+        if self.max_spend_ant > 0 and total_ant > self.max_spend_ant:
+            message = f"Current ANT spending ({current_ant_spent:.8f} ANT) has reached your limit of {self.max_spend_ant:.8f} ANT"
+            return False, message
+        
+        # Check ETH limit
+        if self.max_spend_eth > 0 and total_eth > self.max_spend_eth:
+            message = f"Current ETH spending ({current_eth_spent:.8f} ETH) has reached your limit of {self.max_spend_eth:.8f} ETH"
+            return False, message
+            
+        # Check USD limit against combined value of both currencies
+        if self.max_spend_usd > 0 and total_usd > self.max_spend_usd:
+            message = f"Current combined spending (${current_usd_spent_total:.2f}) has reached your limit of ${self.max_spend_usd:.2f}"
+            return False, message
+            
+        return True, ""
+        
+    def track_spending(self, cost_in_ant):
+        """
+        Track spending for a completed upload
+        
+        Args:
+            cost_in_ant: The cost in ANT that was spent
+        """
+        # Add detailed logging to help diagnose issues
+        self.logger.info(f"TRACKING SPEND: Called track_spending with input value: '{cost_in_ant}' of type {type(cost_in_ant)}")
+        
+        # Validate and convert input if it's a string
+        if isinstance(cost_in_ant, str):
+            try:
+                # Try to convert from Wei format (with many zeros) if it looks like that
+                if len(cost_in_ant) > 30 and cost_in_ant.strip('0.') == '':
+                    self.logger.info("Detected large precision string with all zeros")
+                    cost_in_ant = 0.0
+                else:
+                    # Check if it matches scientific notation
+                    if 'e' in cost_in_ant.lower():
+                        self.logger.info(f"Converting scientific notation: {cost_in_ant}")
+                    
+                    # Convert string to float
+                    cost_in_ant = float(cost_in_ant)
+                    self.logger.info(f"Converted string to float: {cost_in_ant}")
+            except (ValueError, TypeError) as e:
+                self.logger.error(f"Error converting cost string to float: {e}, using 0")
+                cost_in_ant = 0.0
+        elif not isinstance(cost_in_ant, (int, float)):
+            self.logger.error(f"Invalid cost_in_ant value: {cost_in_ant} (type: {type(cost_in_ant)})")
+            try:
+                cost_in_ant = float(cost_in_ant)
+            except (ValueError, TypeError):
+                self.logger.error("Could not convert cost to float, using 0")
+                cost_in_ant = 0.0
+        
+        # Handle small non-zero values properly
+        if cost_in_ant > 0 and cost_in_ant < 0.000001:
+            self.logger.info(f"Detected very small non-zero cost: {cost_in_ant}")
+        elif cost_in_ant <= 0:
+            self.logger.warning(f"Cost appears to be zero or negative: {cost_in_ant}")
+        
+        # Update the counter
+        previous_spent = self.spent_ant_session
+        self.spent_ant_session += cost_in_ant
+        
+        # Log detailed information
+        self.logger.info(f"Added {cost_in_ant:.8f} ANT to session spending (before: {previous_spent:.8f}, after: {self.spent_ant_session:.8f})")
+        
+        # Calculate USD equivalent
+        cost_in_usd = cost_in_ant * self.ant_price_usd
+        self.logger.info(f"Session spending is now {self.spent_ant_session:.8f} ANT (${self.spent_ant_session * self.ant_price_usd:.2f})")
+        
+        # Force immediate UI update instead of waiting for the timer
+        if hasattr(self, 'update_session_spending_display'):
+            self.logger.info("Calling immediate update of session spending display")
+            self.root.after(0, self.update_session_spending_display)
+        else:
+            self.logger.warning("update_session_spending_display not available")
+        
+        self.logger.info(f"Successfully tracked ANT-only spending: {cost_in_ant}")
+        return cost_in_ant  # Return the actual value used for spending
+
+    def track_eth_spending(self, cost_in_eth):
+        """
+        Track spending for ETH costs
+        
+        Args:
+            cost_in_eth: The cost in ETH that was spent
+        """
+        # Add detailed logging to help diagnose issues
+        self.logger.info(f"TRACKING SPEND: Called track_eth_spending with input value: '{cost_in_eth}' of type {type(cost_in_eth)}")
+        
+        # Validate and convert input if it's a string
+        if isinstance(cost_in_eth, str):
+            try:
+                # Try to convert from Wei format (with many zeros) if it looks like that
+                if len(cost_in_eth) > 30 and cost_in_eth.strip('0.') == '':
+                    self.logger.info("Detected large precision string with all zeros")
+                    cost_in_eth = 0.0
+                else:
+                    # Check if it matches scientific notation
+                    if 'e' in cost_in_eth.lower():
+                        self.logger.info(f"Converting scientific notation: {cost_in_eth}")
+                    
+                    # Convert string to float
+                    cost_in_eth = float(cost_in_eth)
+                    self.logger.info(f"Converted string to float: {cost_in_eth}")
+            except (ValueError, TypeError) as e:
+                self.logger.error(f"Error converting cost string to float: {e}, using 0")
+                cost_in_eth = 0.0
+        elif not isinstance(cost_in_eth, (int, float)):
+            self.logger.error(f"Invalid cost_in_eth value: {cost_in_eth} (type: {type(cost_in_eth)})")
+            try:
+                cost_in_eth = float(cost_in_eth)
+            except (ValueError, TypeError):
+                self.logger.error("Could not convert cost to float, using 0")
+                cost_in_eth = 0.0
+        
+        # Handle small non-zero values properly
+        if cost_in_eth > 0 and cost_in_eth < 0.000001:
+            self.logger.info(f"Detected very small non-zero cost: {cost_in_eth}")
+        elif cost_in_eth <= 0:
+            self.logger.warning(f"Cost appears to be zero or negative: {cost_in_eth}")
+        
+        # Update the counter
+        previous_spent = self.spent_eth_session
+        self.spent_eth_session += cost_in_eth
+        
+        # Log detailed information
+        self.logger.info(f"Added {cost_in_eth:.8f} ETH to session spending (before: {previous_spent:.8f}, after: {self.spent_eth_session:.8f})")
+        
+        # Calculate USD equivalent
+        cost_in_usd = cost_in_eth * self.eth_price_usd
+        self.logger.info(f"Session ETH spending is now {self.spent_eth_session:.8f} ETH (${self.spent_eth_session * self.eth_price_usd:.2f})")
+        
+        # Force immediate UI update instead of waiting for the timer
+        if hasattr(self, 'update_session_spending_display'):
+            self.logger.info("Calling immediate update of session spending display")
+            self.root.after(0, self.update_session_spending_display)
+        else:
+            self.logger.warning("update_session_spending_display not available")
+            
+        self.logger.info(f"Successfully tracked ETH-only spending: {cost_in_eth}")
+        return cost_in_eth  # Return the actual value used for spending
+
+    def reset_session_spending(self):
+        """Reset the session spending counters"""
+        old_ant = self.spent_ant_session
+        old_eth = self.spent_eth_session
+        old_usd = (self.spent_ant_session * self.ant_price_usd) + (self.spent_eth_session * self.eth_price_usd)
+        
+        self.spent_ant_session = 0.0
+        self.spent_eth_session = 0.0
+        
+        # Reset initial balances so they'll be recorded again on next update
+        self.initial_ant_balance = None
+        self.initial_eth_balance = None
+        
+        # We no longer reset session_start_time here to allow historical transaction inclusion
+        # This is now managed by toggle_spending_limits
+        self.logger.info(f"Session start time remains at {self.session_start_time}")
+        
+        self.logger.info(f"Reset session spending from {old_ant:.8f} ANT + {old_eth:.8f} ETH (${old_usd:.2f}) to 0")
+        
+        # Force immediate verification to calculate from transaction history
+        if self.enforce_spending_limits.get():
+            self.verify_session_spending(force_update=True)
+        
+        # Force immediate UI update
+        if hasattr(self, 'update_session_spending_display'):
+            self.root.after(0, self.update_session_spending_display)
+
+    def increase_spending_limit(self, increase_by_usd=None):
+        """
+        Increase the spending limit by a dollar amount
+        
+        Args:
+            increase_by_usd: Amount to increase the USD limit by
+        """
+        if increase_by_usd is None:
+            return
+            
+        self.max_spend_usd += increase_by_usd
+        self.logger.info(f"Increased USD spending limit by ${increase_by_usd:.2f} to ${self.max_spend_usd:.2f}")
+        
+        # Save the updated limit
+        self.save_persistent_data()
+
+    def animate_connection_dot(self):
+        # Check if animation is already running
+        # and store the task ID properly if we schedule a new task
+        
+        if self.client and self.client.is_connected:
+            # If connected, stop animation and set dot to green
+            self.connection_dot.config(bg="green")
+            
+            # Set flag to indicate animation is not running
+            self.connection_animation_running = False
+            
+            # Clear any existing animation task if there was one
+            if hasattr(self, 'connection_animation_task') and self.connection_animation_task:
+                self.root.after_cancel(self.connection_animation_task)
+                self.connection_animation_task = None
+        else:
+            # Start animation if not already running
+            if not hasattr(self, 'connection_animation_running') or not self.connection_animation_running:
+                self.connection_animation_running = True
+                
+            # Toggle between orange and red while not connected
+            dot_colors = ["orange", "red"]
+            # Toggle the color
+            if self.connection_dot.cget("bg") == dot_colors[0]:
+                self.connection_dot.config(bg=dot_colors[1])
+            else:
+                self.connection_dot.config(bg=dot_colors[0])
+            
+            # Schedule the next animation frame and store the task ID
+            self.connection_animation_task = self.root.after(500, self.animate_connection_dot)
+
+    def toggle_spending_limits(self):
+        """Toggle spending limits enforcement with timestamp reset"""
+        # Log previous state and new state
+        previous_state = self.enforce_spending_limits.get()
+        new_state = not previous_state
+        self.enforce_spending_limits.set(new_state)
+        
+        self.logger.info(f"Spending limits {'enabled' if new_state else 'disabled'}")
+        
+        # If just enabled, reset session timestamp and spending counters
+        if new_state and not previous_state:
+            # Always start a fresh session with current time
+            self.session_start_time = datetime.datetime.now()
+            self.logger.info(f"New spending limit session started at {self.session_start_time}")
+            self.reset_session_spending()
+            
+            # Start the verification task if not already running
+            if self.spending_verification_task is None:
+                self.verify_session_spending()
+        
+        # If just disabled, cancel verification task
+        if not new_state and previous_state:
+            if self.spending_verification_task:
+                self.root.after_cancel(self.spending_verification_task)
+                self.spending_verification_task = None
+                
+        # Save the updated settings
+        self.save_persistent_data()
+        
+        # Update UI if needed
+        if hasattr(self, 'limit_toggle'):
+            self.limit_toggle.config(text=f"Spending Limits: {'ON' if self.enforce_spending_limits.get() else 'OFF'}")
+            
+        # Update session spending display
+        if hasattr(self, 'update_session_spending_display'):
+            self.update_session_spending_display()
+
+    def verify_session_spending(self, force_update=False):
+        """
+        Verify session spending against transaction history
+        This runs periodically when spending limits are enabled to ensure accuracy
+        
+        Args:
+            force_update: Whether to force update session spending from history
+        """
+        if not self.enforce_spending_limits.get():
+            return
+            
+        self.logger.info("Running session spending verification check")
+        
+        # Calculate spending from transaction history since session start
+        ant_spent_from_history = 0.0
+        eth_spent_from_history = 0.0
+        
+        # Count of transactions examined and found relevant
+        total_transactions = 0
+        relevant_transactions = 0
+        
+        if hasattr(self, 'balance_history') and self.balance_history:
+            self.logger.info(f"Examining {len(self.balance_history)} transaction history records")
+            
+            # Iterate through transaction history
+            for record in self.balance_history:
+                total_transactions += 1
+                
+                # Check if this transaction is within our session timeframe
+                if record['timestamp'] >= self.session_start_time:
+                    relevant_transactions += 1
+                    
+                    # Only count negative changes (spending)
+                    if 'ant_change' in record and record['ant_change'] < 0:
+                        change_value = abs(record['ant_change'])
+                        if change_value > 0:
+                            self.logger.info(f"Found ANT spending transaction: {change_value:.10f} at {record['timestamp']}")
+                            ant_spent_from_history += change_value
+                    
+                    if 'eth_change' in record and record['eth_change'] < 0:
+                        change_value = abs(record['eth_change'])
+                        if change_value > 0:
+                            self.logger.info(f"Found ETH spending transaction: {change_value:.10f} at {record['timestamp']}")
+                            eth_spent_from_history += change_value
+            
+            self.logger.info(f"Examined {total_transactions} records, {relevant_transactions} within session timeframe")
+            self.logger.info(f"Verified spending from transaction history: {ant_spent_from_history:.8f} ANT, {eth_spent_from_history:.8f} ETH")
+            
+            # Compare with current session counters
+            ant_diff = abs(self.spent_ant_session - ant_spent_from_history)
+            eth_diff = abs(self.spent_eth_session - eth_spent_from_history)
+            
+            # Check for discrepancies over 0.0001 threshold (avoid float precision issues)
+            # Or if we've been asked to force an update
+            if force_update or ant_diff > 0.0001 or eth_diff > 0.0001:
+                if force_update:
+                    self.logger.info("Forcing update of session spending from transaction history")
+                else:
+                    self.logger.warning(f"Spending discrepancy detected - Session: {self.spent_ant_session:.8f} ANT, {self.spent_eth_session:.8f} ETH vs History: {ant_spent_from_history:.8f} ANT, {eth_spent_from_history:.8f} ETH")
+                
+                # Update session spending to match history (which is more accurate)
+                self.spent_ant_session = ant_spent_from_history
+                self.spent_eth_session = eth_spent_from_history
+                
+                # Update the UI
+                if hasattr(self, 'update_session_spending_display'):
+                    self.root.after(0, self.update_session_spending_display)
+                    
+                # Check if we now exceed limits, and stop any uploads if needed
+                can_proceed, limit_message = self.check_spending_limits()
+                if not can_proceed and self.is_processing and self._current_operation == 'upload':
+                    self.logger.warning(f"Stopping active uploads due to spending limit: {limit_message}")
+                    self.is_processing = False
+                    self.stop_status_animation()
+                    
+                    # Show warning to user
+                    from tkinter import messagebox
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Spending Limit Exceeded", 
+                        f"{limit_message}\n\nUploads have been automatically stopped."
+                    ))
+            elif ant_spent_from_history > 0 or eth_spent_from_history > 0:
+                # If history shows spending but no discrepancy, still log it
+                self.logger.info(f"Spending verified and matches: {ant_spent_from_history:.8f} ANT, {eth_spent_from_history:.8f} ETH")
+        
+        # Schedule the next verification (every 60 seconds)
+        self.spending_verification_task = self.root.after(60000, self.verify_session_spending)
+
+    def update_session_spending_display(self):
+        """Update the UI display of session spending and limits"""
+        if hasattr(self, 'session_spending_frame'):
+            # Calculate total USD values
+            ant_spent_usd = self.spent_ant_session * self.ant_price_usd
+            eth_spent_usd = self.spent_eth_session * self.eth_price_usd
+            total_spent_usd = ant_spent_usd + eth_spent_usd
+            
+            # Session start time formatting
+            now = datetime.datetime.now()
+            if hasattr(self, 'session_start_time'):
+                # Calculate session duration
+                duration = now - self.session_start_time
+                hours = int(duration.total_seconds() // 3600)
+                minutes = int((duration.total_seconds() % 3600) // 60)
+                
+                # Format the duration
+                if hours > 0:
+                    duration_str = f"{hours}h {minutes}m"
+                else:
+                    duration_str = f"{minutes}m"
+                
+                # Format the session start time
+                if (self.session_start_time.year == now.year and 
+                    self.session_start_time.month == now.month and 
+                    self.session_start_time.day == now.day):
+                    # Today, just show time
+                    start_time_str = self.session_start_time.strftime("%H:%M:%S")
+                else:
+                    # Not today, show date and time
+                    start_time_str = self.session_start_time.strftime("%Y-%m-%d %H:%M:%S")
+                
+                session_text = f"Session started: {start_time_str} ({duration_str} ago)"
+            else:
+                session_text = "Session: Unknown start time"
+            
+            # Update the session time label if it exists
+            if hasattr(self, 'session_time_label'):
+                self.session_time_label.config(text=session_text)
+            
+            # Format spending display with both token and USD values
+            ant_text = f"ANT: {self.spent_ant_session:.8f} (${ant_spent_usd:.2f})"
+            eth_text = f"ETH: {self.spent_eth_session:.8f} (${eth_spent_usd:.2f})"
+            total_text = f"Total: ${total_spent_usd:.2f}"
+            
+            # Update the spending label
+            if hasattr(self, 'spending_label'):
+                self.spending_label.config(text=f"Session Spending: {ant_text}, {eth_text}, {total_text}")
+            
+            # Check spending against limits and set appropriate colors
+            if self.enforce_spending_limits.get():
+                # Get percentage of limit used
+                max_pct = 0
+                
+                # ANT percentage
+                if self.max_spend_ant > 0:
+                    ant_pct = (self.spent_ant_session / self.max_spend_ant) * 100
+                    max_pct = max(max_pct, ant_pct)
+                
+                # ETH percentage
+                if self.max_spend_eth > 0:
+                    eth_pct = (self.spent_eth_session / self.max_spend_eth) * 100
+                    max_pct = max(max_pct, eth_pct)
+                
+                # USD percentage
+                if self.max_spend_usd > 0:
+                    usd_pct = (total_spent_usd / self.max_spend_usd) * 100
+                    max_pct = max(max_pct, usd_pct)
+                
+                # Set warning colors based on percentage of limit
+                if max_pct >= 90:
+                    color = gui.CURRENT_COLORS["error"]
+                elif max_pct >= 75:
+                    color = gui.CURRENT_COLORS["warning"]
+                elif max_pct > 0:
+                    color = gui.CURRENT_COLORS["text_primary"]
+                else:
+                    color = gui.CURRENT_COLORS["text_secondary"]
+                
+                # Update label colors
+                if hasattr(self, 'spending_label'):
+                    self.spending_label.config(foreground=color)
+                
+                # Update session time label color too for consistency
+                if hasattr(self, 'session_time_label'):
+                    self.session_time_label.config(foreground=color)
+            else:
+                # Reset to default colors when limits are not enforced
+                if hasattr(self, 'spending_label'):
+                    self.spending_label.config(foreground=gui.CURRENT_COLORS["text_primary"])
+                if hasattr(self, 'session_time_label'):
+                    self.session_time_label.config(foreground=gui.CURRENT_COLORS["text_secondary"])
+            
+            # Schedule next update (every 30 seconds)
+            if hasattr(self, 'session_spending_update_task'):
+                self.root.after_cancel(self.session_spending_update_task)
+            
+            self.session_spending_update_task = self.root.after(30000, self.update_session_spending_display)
 
 TestApp._view_archive_file = view.view_file
 

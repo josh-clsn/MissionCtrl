@@ -262,6 +262,11 @@ def setup_main_gui(app):
                    arrowcolor=CURRENT_COLORS["text_secondary"],
                    width=12)
     
+    # Style for File and Archive cards within Canvas
+    style.configure("FileCard.TFrame", background=CURRENT_COLORS["bg_light"], relief="flat")
+    style.configure("ArchiveCard.TFrame", background=CURRENT_COLORS["bg_light"], relief="flat")
+    style.configure("Small.TButton", font=("Inter", 9), padding=(4, 2))
+    
     # Status frame
     style.configure("Status.TFrame", 
                    background=CURRENT_COLORS["bg_light"])
@@ -356,7 +361,7 @@ def setup_main_gui(app):
                 widget.destroy()
                 
             # Display loading message and load public data
-            ttk.Label(app.file_content_frame, text="Loading public data...", style="Italic.TLabel").pack(anchor="w", pady=10)
+            ttk.Label(app.file_content_frame, text="Public data", style="Italic.TLabel").pack(anchor="w", pady=10)
             app.root.after(100, lambda: public.display_public_files(app, app.file_content_frame))
     
     app.wallet_btn = ttk.Button(nav_frame, text="Wallet", command=show_wallet_view, 
@@ -371,7 +376,7 @@ def setup_main_gui(app):
                                style="NavButton.TButton")
     app.download_btn.pack(side=tk.LEFT, padx=2)
     
-    app.manage_btn = ttk.Button(nav_frame, text="Manage Files", command=show_manage_view, 
+    app.manage_btn = ttk.Button(nav_frame, text="Files", command=show_manage_view, 
                              style="NavButton.TButton")
     app.manage_btn.pack(side=tk.LEFT, padx=2)
     
@@ -474,6 +479,295 @@ def setup_main_gui(app):
     app.unlock_button = ttk.Button(wallet_actions, text="Unlock Wallet", 
                                command=unlock_wallet, style="Accent.TButton")
     # Don't pack it - it will be shown after cancel
+    
+    # Add Spending Limits Card
+    spending_card = ttk.Frame(app.wallet_frame, style="RoundedCard.TFrame", padding=15)
+    spending_card.pack(fill=tk.X, pady=(0, 15))
+    
+    ttk.Label(spending_card, text="Upload Spending Limits", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 10))
+    
+    # Enable/disable spending limits
+    enable_frame = ttk.Frame(spending_card, style="CardContent.TFrame")
+    enable_frame.pack(fill=tk.X, pady=(0, 10))
+    
+    enable_check = ttk.Checkbutton(
+        enable_frame, 
+        text="Enable spending limits", 
+        variable=app.enforce_spending_limits,
+        command=lambda: app.save_persistent_data(),
+        style="Card.TCheckbutton"
+    )
+    enable_check.pack(side=tk.LEFT)
+    
+    # Alpha feature warning
+    alpha_label = ttk.Label(
+        enable_frame,
+        text="(Alpha Feature)",
+        style="CardSecondary.TLabel",
+        foreground=CURRENT_COLORS["warning"]
+    )
+    alpha_label.pack(side=tk.LEFT, padx=(5, 0))
+    
+    # Warning text explaining limitations
+    warning_frame = ttk.Frame(spending_card, style="CardContent.TFrame")
+    warning_frame.pack(fill=tk.X, pady=(0, 10))
+    
+    warning_text = ttk.Label(
+        warning_frame,
+        text="Note: Spending limits track accumulated totals but may be exceeded in some cases. Do not rely on this feature for critical financial control.",
+        style="CardSecondary.TLabel",
+        wraplength=500,
+        justify="left"
+    )
+    warning_text.pack(anchor="w", fill=tk.X)
+    
+    # Session spending display
+    session_frame = ttk.Frame(spending_card, style="CardContent.TFrame")
+    session_frame.pack(fill=tk.X, pady=(0, 10))
+    
+    ttk.Label(
+        session_frame, 
+        text="Session spending:", 
+        style="CardText.TLabel"
+    ).pack(side=tk.LEFT)
+    
+    # Create dynamic labels for session spending - explicitly set foreground
+    app.ant_spent_label = ttk.Label(
+        session_frame, 
+        text="0.00000000 ANT", 
+        style="CardText.TLabel",
+        foreground=CURRENT_COLORS["text_primary"] # Ensure visibility
+    )
+    app.ant_spent_label.pack(side=tk.LEFT, padx=(5, 0))
+    
+    # Add a separator
+    ttk.Label(
+        session_frame,
+        text=" + ",
+        style="CardSecondary.TLabel"
+    ).pack(side=tk.LEFT)
+    
+    # ETH spending amount - explicitly set foreground
+    app.eth_spent_label = ttk.Label(
+        session_frame, 
+        text="0.00000000 ETH", 
+        style="CardText.TLabel",
+        foreground=CURRENT_COLORS["text_primary"] # Ensure visibility
+    )
+    app.eth_spent_label.pack(side=tk.LEFT)
+    
+    # Combined USD value
+    app.usd_spent_label = ttk.Label(
+        session_frame, 
+        text="($0.00)", 
+        style="CardSecondary.TLabel"
+    )
+    app.usd_spent_label.pack(side=tk.LEFT, padx=(5, 0))
+    
+    # Define a function to update the session spending display
+    def update_session_spending_display():
+        # Get current spending
+        ant_spent = app.spent_ant_session
+        eth_spent = app.spent_eth_session
+        
+        # Calculate USD equivalents
+        ant_usd = ant_spent * app.ant_price_usd
+        eth_usd = eth_spent * app.eth_price_usd
+        total_usd = ant_usd + eth_usd
+        
+        # Update labels with explicit foreground color for dark mode visibility
+        app.ant_spent_label.config(
+            text=f"{ant_spent:.8f} ANT",
+            foreground=CURRENT_COLORS["text_primary"]  # Always use text_primary for visibility
+        )
+        app.eth_spent_label.config(
+            text=f"{eth_spent:.8f} ETH",
+            foreground=CURRENT_COLORS["text_primary"]  # Always use text_primary for visibility
+        )
+        app.usd_spent_label.config(
+            text=f"(${total_usd:.2f})",
+            foreground=CURRENT_COLORS["text_secondary"]  # Use text_secondary for the USD value
+        )
+        
+        # Schedule next update in 5 seconds and store task ID for proper cleanup
+        app.session_spending_update_task = app.root.after(5000, update_session_spending_display)
+    
+    # Make the function accessible on the app object for use after uploads
+    app.update_session_spending_display = update_session_spending_display
+    
+    # Perform initial update immediately
+    update_session_spending_display()
+    
+    # Start the update cycle and store the initial task ID (don't need immediate second update)
+    # app.session_spending_update_task is already set by the initial call above
+    
+    # Container for all limit inputs - using grid layout for alignment
+    limits_container = ttk.Frame(spending_card, style="CardContent.TFrame")
+    limits_container.pack(fill=tk.X, pady=(0, 10))
+    limits_container.columnconfigure(1, weight=0) # Column for entries
+    limits_container.columnconfigure(2, weight=1) # Column for helper text
+    
+    def validate_numeric(P):
+        # Allow empty string or valid float
+        if P == "":
+            return True
+        try:
+            val = float(P)
+            return val >= 0
+        except ValueError:
+            return False
+    
+    # Register validation command
+    vcmd = app.root.register(validate_numeric)
+    
+    # Row 0: USD limit section
+    usd_label = ttk.Label(limits_container, text="USD Limit: $", style="CardText.TLabel")
+    usd_label.grid(row=0, column=0, sticky="w", padx=(0, 5), pady=2)
+    
+    usd_var = tk.StringVar(value=str(app.max_spend_usd) if app.max_spend_usd > 0 else "")
+    usd_entry = ttk.Entry(limits_container, width=10, textvariable=usd_var, validate="key", validatecommand=(vcmd, '%P'), style="TEntry")
+    usd_entry.grid(row=0, column=1, sticky="w", pady=2)
+    
+    usd_help = ttk.Label(limits_container, text="Max USD to spend on uploads (0 = no limit)", style="CardSecondary.TLabel")
+    usd_help.grid(row=0, column=2, sticky="w", padx=(5, 0), pady=2)
+
+    # Row 1: ANT limit section (in USD)
+    ant_label = ttk.Label(limits_container, text="ANT Limit (in USD): $", style="CardText.TLabel")
+    ant_label.grid(row=1, column=0, sticky="w", padx=(0, 5), pady=2)
+    
+    # Use stored USD value if available, otherwise convert from ANT
+    ant_usd_value = getattr(app, 'ant_limit_usd', 0.0)
+    if ant_usd_value == 0 and app.max_spend_ant > 0 and app.ant_price_usd > 0:
+        # Fallback to calculated value for backward compatibility
+        ant_usd_value = app.max_spend_ant * app.ant_price_usd
+    
+    ant_usd_var = tk.StringVar(value=str(ant_usd_value) if ant_usd_value > 0 else "")
+    ant_entry = ttk.Entry(limits_container, width=10, textvariable=ant_usd_var, validate="key", validatecommand=(vcmd, '%P'), style="TEntry")
+    ant_entry.grid(row=1, column=1, sticky="w", pady=2)
+    
+    # Create a label to show the equivalent ANT amount
+    ant_equiv_var = tk.StringVar(value="")
+    ant_equiv_label = ttk.Label(limits_container, textvariable=ant_equiv_var, style="CardSecondary.TLabel")
+    ant_equiv_label.grid(row=1, column=2, sticky="w", padx=(5, 0), pady=2)
+    
+    # Function to update the ANT equivalent amount
+    def update_ant_equiv(*args):
+        try:
+            usd_value = float(ant_usd_var.get()) if ant_usd_var.get() else 0
+            if usd_value > 0 and app.ant_price_usd > 0:
+                ant_amount = usd_value / app.ant_price_usd
+                ant_equiv_var.set(f"= {ant_amount:.8f} ANT (Max USD to spend on ANT)")
+            else:
+                ant_equiv_var.set("= 0 ANT (Max USD to spend on ANT)")
+        except ValueError:
+            ant_equiv_var.set("Enter a valid USD amount")
+    
+    # Track changes to the ANT USD input
+    ant_usd_var.trace_add("write", update_ant_equiv)
+    update_ant_equiv()  # Initial update
+    
+    # Row 2: ETH limit section (in USD)
+    eth_label = ttk.Label(limits_container, text="ETH Limit (in USD): $", style="CardText.TLabel")
+    eth_label.grid(row=2, column=0, sticky="w", padx=(0, 5), pady=2)
+    
+    # Use stored USD value if available, otherwise convert from ETH
+    eth_usd_value = getattr(app, 'eth_limit_usd', 0.0)
+    if eth_usd_value == 0 and app.max_spend_eth > 0 and app.eth_price_usd > 0:
+        # Fallback to calculated value for backward compatibility
+        eth_usd_value = app.max_spend_eth * app.eth_price_usd
+    
+    eth_usd_var = tk.StringVar(value=str(eth_usd_value) if eth_usd_value > 0 else "")
+    eth_entry = ttk.Entry(limits_container, width=10, textvariable=eth_usd_var, validate="key", validatecommand=(vcmd, '%P'), style="TEntry")
+    eth_entry.grid(row=2, column=1, sticky="w", pady=2)
+    
+    # Create a label to show the equivalent ETH amount
+    eth_equiv_var = tk.StringVar(value="")
+    eth_equiv_label = ttk.Label(limits_container, textvariable=eth_equiv_var, style="CardSecondary.TLabel")
+    eth_equiv_label.grid(row=2, column=2, sticky="w", padx=(5, 0), pady=2)
+    
+    # Function to update the ETH equivalent amount
+    def update_eth_equiv(*args):
+        try:
+            usd_value = float(eth_usd_var.get()) if eth_usd_var.get() else 0
+            if usd_value > 0 and app.eth_price_usd > 0:
+                eth_amount = usd_value / app.eth_price_usd
+                eth_equiv_var.set(f"= {eth_amount:.8f} ETH (Max USD to spend on ETH)")
+            else:
+                eth_equiv_var.set("= 0 ETH (Max USD to spend on ETH)")
+        except ValueError:
+            eth_equiv_var.set("Enter a valid USD amount")
+    
+    # Track changes to the ETH USD input
+    eth_usd_var.trace_add("write", update_eth_equiv)
+    update_eth_equiv()  # Initial update
+    
+    # Row 3: Buttons
+    button_frame_limits = ttk.Frame(limits_container, style="CardContent.TFrame")
+    button_frame_limits.grid(row=3, column=0, columnspan=3, sticky="w", pady=(10, 0))
+
+    def save_spending_limits():
+        try:
+            # Get USD limit
+            usd_text = usd_var.get().strip()
+            app.max_spend_usd = float(usd_text) if usd_text else 0.0
+            
+            # Get ANT limit (convert from USD to ANT)
+            ant_usd_text = ant_usd_var.get().strip()
+            ant_usd_value = float(ant_usd_text) if ant_usd_text else 0.0
+            
+            # Store original USD value for ANT
+            app.ant_limit_usd = ant_usd_value
+            
+            # Convert USD to ANT tokens
+            if ant_usd_value > 0 and app.ant_price_usd > 0:
+                app.max_spend_ant = ant_usd_value / app.ant_price_usd
+            else:
+                app.max_spend_ant = 0.0
+            
+            # Get ETH limit (convert from USD to ETH)
+            eth_usd_text = eth_usd_var.get().strip()
+            eth_usd_value = float(eth_usd_text) if eth_usd_text else 0.0
+            
+            # Store original USD value for ETH
+            app.eth_limit_usd = eth_usd_value
+            
+            # Convert USD to ETH tokens
+            if eth_usd_value > 0 and app.eth_price_usd > 0:
+                app.max_spend_eth = eth_usd_value / app.eth_price_usd
+            else:
+                app.max_spend_eth = 0.0
+            
+            # Save to persistent data
+            app.save_persistent_data()
+            
+            # Show confirmation with converted values
+            from tkinter import messagebox
+            messagebox.showinfo("Limits Saved", 
+                f"Spending limits saved:\n" + 
+                f"- Total: ${app.max_spend_usd:.2f}\n" +
+                f"- ANT: {app.max_spend_ant:.8f} ANT (${ant_usd_value:.2f})\n" +
+                f"- ETH: {app.max_spend_eth:.8f} ETH (${eth_usd_value:.2f})"
+            )
+            
+        except ValueError:
+            from tkinter import messagebox
+            messagebox.showerror("Input Error", "Please enter valid numbers for limits.")
+    
+    save_btn = ttk.Button(
+        button_frame_limits, 
+        text="Save Limits", 
+        style="Accent.TButton",
+        command=save_spending_limits
+    )
+    save_btn.pack(side=tk.LEFT)
+    
+    reset_btn = ttk.Button(
+        button_frame_limits, 
+        text="Reset Session Spending", 
+        style="Secondary.TButton",
+        command=app.reset_session_spending
+    )
+    reset_btn.pack(side=tk.LEFT, padx=(10, 0))
     
     # History Card
     history_card = ttk.Frame(app.wallet_frame, style="RoundedCard.TFrame", padding=15)
@@ -707,7 +1001,7 @@ def setup_main_gui(app):
         for widget in app.file_content_frame.winfo_children():
             widget.destroy()
             
-        ttk.Label(app.file_content_frame, text="Loading public data...", style="Italic.TLabel").pack(anchor="w", pady=10)
+        ttk.Label(app.file_content_frame, text="Public data", style="Italic.TLabel").pack(anchor="w", pady=10)
         app.root.after(100, lambda: public.display_public_files(app, app.file_content_frame))
     
     # Function to show private data content
@@ -716,7 +1010,7 @@ def setup_main_gui(app):
         for widget in app.file_content_frame.winfo_children():
             widget.destroy()
             
-        ttk.Label(app.file_content_frame, text="Loading private data...", style="Italic.TLabel").pack(anchor="w", pady=10)
+        ttk.Label(app.file_content_frame, text="Private data", style="Italic.TLabel").pack(anchor="w", pady=10)
         app.root.after(100, lambda: private.display_private_files(app, app.file_content_frame))
     
     # Status bar with modern styling
@@ -742,7 +1036,7 @@ def setup_main_gui(app):
         app.root.after(100, lambda: apply_theme(app))
     
     # Version label
-    ttk.Label(status_bar, text="v2.0.0", 
+    ttk.Label(status_bar, text="v2.1.0", 
             foreground=CURRENT_COLORS["text_secondary"],
             padding=(15, 15)).pack(side=tk.RIGHT)
     
@@ -845,7 +1139,7 @@ def apply_theme_to_toplevel(toplevel, is_dark=False):
             _apply_theme_to_ttk_widget(child, colors)
         elif isinstance(child, tk.Button):
             _apply_theme_to_ttk_widget(child, colors)
-        elif isinstance(child, ttk.Checkbutton) or isinstance(child, ttk.Radiobutton):
+        elif isinstance(child, ttk.Checkbutton) or isinstance(child, tk.Radiobutton):
             _apply_theme_to_ttk_widget(child, colors)
         
         # Recursive call for any child containers
@@ -1065,6 +1359,10 @@ def toggle_theme(app):
         if isinstance(window, tk.Toplevel):
             apply_theme_to_toplevel(window, app.is_dark_mode)
 
+    # Refresh the current content view to apply theme changes immediately
+    if hasattr(app, 'update_content_view'):
+        app.update_content_view()
+
 def apply_theme(app):
     """Apply the current theme to all UI elements"""
     style = ttk.Style()
@@ -1183,6 +1481,10 @@ def apply_theme(app):
              background=[("active", CURRENT_COLORS["accent_primary"])],
              arrowcolor=[("active", "white")])
     
+    # Update File/Archive card styles
+    style.configure("FileCard.TFrame", background=CURRENT_COLORS["bg_light"])
+    style.configure("ArchiveCard.TFrame", background=CURRENT_COLORS["bg_light"])
+
     # Status frame style - critical for bottom white strip
     style.configure("Status.TFrame", 
                    background=CURRENT_COLORS["bg_light"],
@@ -1228,6 +1530,7 @@ def _apply_theme_to_widget(widget):
     """Recursively apply theme to a widget and all its children"""
     try:
         if isinstance(widget, tk.Entry):
+            # Standard tk.Entry styling
             widget.config(bg=CURRENT_COLORS["bg_input"], 
                         fg=CURRENT_COLORS["text_primary"],
                         insertbackground=CURRENT_COLORS["text_primary"], 
@@ -1242,21 +1545,10 @@ def _apply_theme_to_widget(widget):
                         highlightcolor=CURRENT_COLORS["accent_primary"],
                         highlightthickness=1)
         elif isinstance(widget, ttk.Entry):
-            # For ttk.Entry we modify both the widget and the style
-            style = ttk.Style()
-            entry_style = f"Custom.TEntry.{id(widget)}"
-            style.configure(entry_style, 
-                          fieldbackground=CURRENT_COLORS["bg_input"],
-                          background=CURRENT_COLORS["bg_input"],
-                          foreground=CURRENT_COLORS["text_primary"],
-                          bordercolor=CURRENT_COLORS["border"],
-                          insertcolor=CURRENT_COLORS["text_primary"])
-            style.map(entry_style,
-                     fieldbackground=[("readonly", CURRENT_COLORS["bg_input"]), 
-                                     ("disabled", CURRENT_COLORS["bg_secondary"])],
-                     foreground=[("readonly", CURRENT_COLORS["text_primary"]), 
-                                ("disabled", CURRENT_COLORS["text_secondary"])])
-            widget.configure(style=entry_style)
+            # For ttk.Entry, ensure it uses the standard TEntry style
+            # which is updated globally in apply_theme.
+            # Avoid creating custom styles per widget here.
+            widget.configure(style="TEntry")
             
         elif isinstance(widget, tk.Text):
             widget.config(bg=CURRENT_COLORS["bg_input"], 
@@ -1283,7 +1575,6 @@ def _apply_theme_to_widget(widget):
                         bd=0, 
                         highlightthickness=0)
         elif isinstance(widget, tk.Frame):
-            # For non-ttk frames which don't use styles
             widget.config(bg=CURRENT_COLORS["bg_secondary"],
                         bd=0, 
                         highlightthickness=0)
@@ -1299,7 +1590,6 @@ def _apply_theme_to_widget(widget):
         
         # Apply theme to any toplevel windows
         if isinstance(widget, tk.Toplevel):
-            # Apply full styling to the toplevel window
             apply_theme_to_toplevel(widget, CURRENT_COLORS == DARK_COLORS)
             
         # Handle specific widget types with highlighting

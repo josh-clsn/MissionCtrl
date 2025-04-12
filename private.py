@@ -6,6 +6,7 @@ from tkinter import ttk, messagebox
 from autonomi_client import PaymentOption, DataMapChunk
 import view
 import gui
+import math
 
 logger = logging.getLogger("MissionCtrl")
 
@@ -61,6 +62,87 @@ async def upload_private(app, file_path, from_queue=False):
                 app.is_processing = False
                 app.stop_status_animation()
                 return False if from_queue else None
+                
+            # Check spending limits
+            can_proceed, limit_message = app.check_spending_limits(estimated_cost, from_queue)
+            if not can_proceed:
+                logger.info("Upload stopped due to spending limit: %s", limit_message)
+                
+                if from_queue:
+                    app.root.after(0, lambda: messagebox.showerror("Spending Limit Reached", f"{limit_message}\n\nUpload queue has been paused."))
+                    app.is_processing = False
+                    app.stop_status_animation()
+                    return False
+                
+                # Ask the user if they want to proceed anyway or increase the limit
+                proceed_anyway = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: messagebox.askyesnocancel(
+                        "Spending Limit Reached", 
+                        f"{limit_message}\n\nDo you want to proceed anyway? Click:\n• Yes to proceed with this upload\n• No to increase your spending limit\n• Cancel to abort"
+                    )
+                )
+                
+                if proceed_anyway is None:  # Cancel
+                    logger.info("Upload cancelled by user after spending limit warning")
+                    app.is_processing = False
+                    app.stop_status_animation()
+                    return False if from_queue else None
+                elif proceed_anyway is False:  # No - increase limit
+                    # Calculate needed increase (round up to nearest dollar)
+                    current_usd_limit = app.max_spend_usd
+                    current_usd_spent = app.spent_ant_session * app.ant_price_usd
+                    estimated_usd = estimated_cost * app.ant_price_usd
+                    needed_increase = math.ceil(current_usd_spent + estimated_usd - current_usd_limit)
+                    
+                    def ask_for_limit_increase():
+                        nonlocal increase_amount
+                        increase_dialog = tk.Toplevel(app.root)
+                        increase_dialog.title("Increase Spending Limit")
+                        increase_dialog.configure(bg=gui.CURRENT_COLORS["bg_light"])
+                        increase_dialog.grab_set()
+                        
+                        ttk.Label(increase_dialog, text=f"Current USD limit: ${current_usd_limit:.2f}").pack(pady=5)
+                        ttk.Label(increase_dialog, text=f"Estimated cost: ${estimated_usd:.2f}").pack(pady=5)
+                        ttk.Label(increase_dialog, text=f"Recommended increase: ${needed_increase:.2f}").pack(pady=5)
+                        
+                        frame = ttk.Frame(increase_dialog)
+                        frame.pack(pady=10)
+                        ttk.Label(frame, text="Enter amount to increase ($): ").pack(side=tk.LEFT)
+                        entry = ttk.Entry(frame, width=10)
+                        entry.pack(side=tk.LEFT, padx=5)
+                        entry.insert(0, str(needed_increase))
+                        
+                        def on_ok():
+                            nonlocal increase_amount
+                            try:
+                                increase_amount = float(entry.get())
+                                increase_dialog.destroy()
+                            except ValueError:
+                                messagebox.showerror("Invalid Input", "Please enter a valid number.")
+                        
+                        ttk.Button(increase_dialog, text="OK", command=on_ok).pack(pady=10)
+                        
+                        app.root.wait_window(increase_dialog)
+                    
+                    increase_amount = 0
+                    app.root.after(0, ask_for_limit_increase)
+                    # Wait for dialog to complete
+                    while app.root.winfo_exists():
+                        await asyncio.sleep(0.1)
+                        if not any(w.title() == "Increase Spending Limit" for w in app.root.winfo_toplevel().winfo_children() if isinstance(w, tk.Toplevel)):
+                            break
+                    
+                    if increase_amount > 0:
+                        app.increase_spending_limit(increase_amount)
+                        # Now continue with upload
+                        logger.info(f"Spending limit increased by ${increase_amount:.2f}, continuing upload")
+                    else:
+                        logger.info("Upload cancelled - no spending limit increase")
+                        app.is_processing = False
+                        app.stop_status_animation()
+                        return False if from_queue else None
+                
             app._current_operation = None
             app.status_label.config(text=f"Quote retrieved: {estimated_cost} ANT for {os.path.basename(file_path)}")
             app.stop_status_animation()
@@ -90,6 +172,44 @@ async def upload_private(app, file_path, from_queue=False):
             app.client.data_put(file_data, payment_option),
             timeout=15000
         )
+        
+        # Add detailed logging about the payment
+        logger.info("PAYMENT DEBUG: Private upload price type = %s, value = %s", type(price), price)
+        
+        # Track the spending - check if ETH was used
+        try:
+            if isinstance(price, tuple) and len(price) == 2:
+                # This means the price has both ANT and ETH components
+                ant_price, eth_price = price
+                logger.info("PAYMENT DEBUG: Tuple format detected: ANT=%s, ETH=%s", ant_price, eth_price)
+                
+                # Convert to float for safety
+                try:
+                    ant_price_float = float(ant_price)
+                    app.track_spending(ant_price_float)
+                    logger.info("Successfully tracked private ANT spending: %s", ant_price_float)
+                except (ValueError, TypeError) as e:
+                    logger.error("Failed to convert private ANT price to float: %s", e)
+                
+                try:
+                    eth_price_float = float(eth_price)
+                    app.track_eth_spending(eth_price_float)
+                    logger.info("Successfully tracked private ETH spending: %s", eth_price_float)
+                except (ValueError, TypeError) as e:
+                    logger.error("Failed to convert private ETH price to float: %s", e)
+            else:
+                # Traditional ANT-only payment
+                logger.info("PAYMENT DEBUG: Single value format (ANT only) detected for private upload")
+                try:
+                    price_float = float(price)
+                    app.track_spending(price_float)
+                    logger.info("Successfully tracked private ANT-only spending: %s", price_float)
+                except (ValueError, TypeError) as e:
+                    logger.error("Failed to convert private ANT-only price to float: %s", e)
+        except Exception as e:
+            logger.error("Error in private payment tracking: %s", e)
+            logger.error(traceback.format_exc())
+        
         access_token = data_map_chunk.to_hex()
         file_name = os.path.basename(file_path)
         app.uploaded_private_files.append((file_name, access_token))

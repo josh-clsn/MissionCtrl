@@ -7,6 +7,7 @@ import logging
 from autonomi_client import PublicArchive, Metadata
 import view
 import gui
+import math
 
 logger = logging.getLogger("MissionCtrl")
 
@@ -45,7 +46,11 @@ async def upload_public(app, file_path, from_queue=False):
             app.is_processing = False
             app.stop_status_animation()
             return False if from_queue else None
+        
+        # Cost calculation is separate from spending limits
+        estimated_cost = 0
         if app.perform_cost_calc_var.get() and not from_queue:
+            # Only calculate cost if user has enabled cost calculation
             logger.info("Calculating estimated cost for file: %s", file_path)
             app._current_operation = 'cost_calc'
             try:
@@ -60,6 +65,8 @@ async def upload_public(app, file_path, from_queue=False):
                 app.is_processing = False
                 app.stop_status_animation()
                 return False if from_queue else None
+                
+            # Show cost confirmation dialog
             logger.info("Showing cost confirmation dialog")
             app._current_operation = None 
             app.status_label.config(text=f"Quote retrieved: {estimated_cost} ANT for {os.path.basename(file_path)}")
@@ -73,6 +80,93 @@ async def upload_public(app, file_path, from_queue=False):
                 app.is_processing = False
                 app.status_label.config(text="Upload cancelled")
                 return False if from_queue else None
+        
+        # Check spending limits separately - this doesn't require cost calculation
+        # It only checks against accumulated spending so far
+        if app.enforce_spending_limits.get():
+            current_ant_spent = app.spent_ant_session
+            current_eth_spent = app.spent_eth_session
+            
+            # Check if any limit has been reached without needing a cost estimate
+            can_proceed, limit_message = app.check_spending_limits(0, from_queue)
+            if not can_proceed:
+                logger.info("Upload stopped due to spending limit: %s", limit_message)
+                
+                if from_queue:
+                    app.root.after(0, lambda: messagebox.showerror("Spending Limit Reached", f"{limit_message}\n\nUpload queue has been paused."))
+                    app.is_processing = False
+                    app.stop_status_animation()
+                    return False
+                
+                # Ask the user if they want to proceed anyway or increase the limit
+                proceed_anyway = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: messagebox.askyesnocancel(
+                        "Spending Limit Reached", 
+                        f"{limit_message}\n\nDo you want to proceed anyway? Click:\n• Yes to proceed with this upload\n• No to increase your spending limit\n• Cancel to abort"
+                    )
+                )
+                
+                if proceed_anyway is None:  # Cancel
+                    logger.info("Upload cancelled by user after spending limit warning")
+                    app.is_processing = False
+                    app.stop_status_animation()
+                    return False if from_queue else None
+                elif proceed_anyway is False:  # No - increase limit
+                    # Calculate needed increase (round up to nearest dollar)
+                    current_usd_limit = app.max_spend_usd
+                    current_usd_spent = (app.spent_ant_session * app.ant_price_usd) + (app.spent_eth_session * app.eth_price_usd)
+                    # Use a reasonable default value for increase since we don't have a cost estimate
+                    needed_increase = 5.0  # Default to suggest $5 increase
+                    
+                    def ask_for_limit_increase():
+                        nonlocal increase_amount
+                        increase_dialog = tk.Toplevel(app.root)
+                        increase_dialog.title("Increase Spending Limit")
+                        increase_dialog.configure(bg=gui.CURRENT_COLORS["bg_light"])
+                        increase_dialog.grab_set()
+                        
+                        ttk.Label(increase_dialog, text=f"Current USD limit: ${current_usd_limit:.2f}").pack(pady=5)
+                        ttk.Label(increase_dialog, text=f"Current spending: ${current_usd_spent:.2f}").pack(pady=5)
+                        ttk.Label(increase_dialog, text=f"Suggested increase: ${needed_increase:.2f}").pack(pady=5)
+                        
+                        frame = ttk.Frame(increase_dialog)
+                        frame.pack(pady=10)
+                        ttk.Label(frame, text="Enter amount to increase ($): ").pack(side=tk.LEFT)
+                        entry = ttk.Entry(frame, width=10)
+                        entry.pack(side=tk.LEFT, padx=5)
+                        entry.insert(0, str(needed_increase))
+                        
+                        def on_ok():
+                            nonlocal increase_amount
+                            try:
+                                increase_amount = float(entry.get())
+                                increase_dialog.destroy()
+                            except ValueError:
+                                messagebox.showerror("Invalid Input", "Please enter a valid number.")
+                        
+                        ttk.Button(increase_dialog, text="OK", command=on_ok).pack(pady=10)
+                        
+                        app.root.wait_window(increase_dialog)
+                    
+                    increase_amount = 0
+                    app.root.after(0, ask_for_limit_increase)
+                    # Wait for dialog to complete
+                    while app.root.winfo_exists():
+                        await asyncio.sleep(0.1)
+                        if not any(w.title() == "Increase Spending Limit" for w in app.root.winfo_toplevel().winfo_children() if isinstance(w, tk.Toplevel)):
+                            break
+                    
+                    if increase_amount > 0:
+                        app.increase_spending_limit(increase_amount)
+                        # Now continue with upload
+                        logger.info(f"Spending limit increased by ${increase_amount:.2f}, continuing upload")
+                    else:
+                        logger.info("Upload cancelled - no spending limit increase")
+                        app.is_processing = False
+                        app.stop_status_animation()
+                        return False if from_queue else None
+        
         logger.info("Upload started for file: %s", file_path)
         app._current_operation = 'upload'
         app.status_label.config(text=f"Uploading file: {os.path.basename(file_path)}")
@@ -81,7 +175,43 @@ async def upload_public(app, file_path, from_queue=False):
             app.client.data_put_public(file_data, payment_option),
             timeout=15000
         )
-        logger.info("Chunk uploaded to address: %s for %s ANT", chunk_addr, chunk_price)
+        logger.info("Chunk uploaded to address: %s for %s", chunk_addr, chunk_price)
+        logger.info("PAYMENT DEBUG: chunk_price type = %s, value = %s", type(chunk_price), chunk_price)
+        
+        # Track the spending - check if ETH was used by examining chunk_price type
+        try:
+            if isinstance(chunk_price, tuple) and len(chunk_price) == 2:
+                # This means the price has both ANT and ETH components
+                ant_price, eth_price = chunk_price
+                logger.info("PAYMENT DEBUG: Tuple format detected: ANT=%s, ETH=%s", ant_price, eth_price)
+                
+                # Convert to float for safety
+                try:
+                    ant_price_float = float(ant_price)
+                    app.track_spending(ant_price_float)
+                    logger.info("Successfully tracked ANT spending: %s", ant_price_float)
+                except (ValueError, TypeError) as e:
+                    logger.error("Failed to convert ANT price to float: %s", e)
+                
+                try:
+                    eth_price_float = float(eth_price)
+                    app.track_eth_spending(eth_price_float)
+                    logger.info("Successfully tracked ETH spending: %s", eth_price_float)
+                except (ValueError, TypeError) as e:
+                    logger.error("Failed to convert ETH price to float: %s", e)
+            else:
+                # Traditional ANT-only payment
+                logger.info("PAYMENT DEBUG: Single value format (ANT only) detected")
+                try:
+                    chunk_price_float = float(chunk_price)
+                    app.track_spending(chunk_price_float)
+                    logger.info("Successfully tracked ANT-only spending: %s", chunk_price_float)
+                except (ValueError, TypeError) as e:
+                    logger.error("Failed to convert ANT-only price to float: %s", e)
+        except Exception as e:
+            logger.error("Error in payment tracking: %s", e)
+            logger.error(traceback.format_exc())
+        
         file_name = os.path.basename(file_path)
         app.uploaded_files.append((file_name, chunk_addr))
         if not from_queue:
@@ -189,19 +319,94 @@ async def upload_public_directory(app, dir_path):
                 app.is_processing = False
                 app.stop_status_animation()
                 return
-            logger.info("Showing cost confirmation dialog")
-            app._current_operation = None 
-            app.status_label.config(text=f"Quote retrieved: {estimated_cost} ANT for {os.path.basename(dir_path)}")
-            app.stop_status_animation() 
-            proceed = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: messagebox.askyesno("Confirm Upload", f"Estimated cost for directory: {estimated_cost} ANT. Proceed?")
-            )
-            if not proceed:
-                logger.info("Upload cancelled by user")
-                app.is_processing = False
-                app.status_label.config(text="Upload cancelled")
-                return
+            
+            # Check spending limits
+            can_proceed, limit_message = app.check_spending_limits(estimated_cost, False)
+            if not can_proceed:
+                logger.info("Directory upload stopped due to spending limit: %s", limit_message)
+                
+                # Ask the user if they want to proceed anyway or increase the limit
+                proceed_anyway = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: messagebox.askyesnocancel(
+                        "Spending Limit Reached", 
+                        f"{limit_message}\n\nDo you want to proceed anyway? Click:\n• Yes to proceed with this upload\n• No to increase your spending limit\n• Cancel to abort"
+                    )
+                )
+                
+                if proceed_anyway is None:  # Cancel
+                    logger.info("Directory upload cancelled by user after spending limit warning")
+                    app.is_processing = False
+                    app.stop_status_animation()
+                    return
+                elif proceed_anyway is False:  # No - increase limit
+                    # Calculate needed increase (round up to nearest dollar)
+                    current_usd_limit = app.max_spend_usd
+                    current_usd_spent = app.spent_ant_session * app.ant_price_usd
+                    estimated_usd = estimated_cost * app.ant_price_usd
+                    needed_increase = math.ceil(current_usd_spent + estimated_usd - current_usd_limit)
+                    
+                    def ask_for_limit_increase():
+                        nonlocal increase_amount
+                        increase_dialog = tk.Toplevel(app.root)
+                        increase_dialog.title("Increase Spending Limit")
+                        increase_dialog.configure(bg=gui.CURRENT_COLORS["bg_light"])
+                        increase_dialog.grab_set()
+                        
+                        ttk.Label(increase_dialog, text=f"Current USD limit: ${current_usd_limit:.2f}").pack(pady=5)
+                        ttk.Label(increase_dialog, text=f"Estimated cost: ${estimated_usd:.2f}").pack(pady=5)
+                        ttk.Label(increase_dialog, text=f"Recommended increase: ${needed_increase:.2f}").pack(pady=5)
+                        
+                        frame = ttk.Frame(increase_dialog)
+                        frame.pack(pady=10)
+                        ttk.Label(frame, text="Enter amount to increase ($): ").pack(side=tk.LEFT)
+                        entry = ttk.Entry(frame, width=10)
+                        entry.pack(side=tk.LEFT, padx=5)
+                        entry.insert(0, str(needed_increase))
+                        
+                        def on_ok():
+                            nonlocal increase_amount
+                            try:
+                                increase_amount = float(entry.get())
+                                increase_dialog.destroy()
+                            except ValueError:
+                                messagebox.showerror("Invalid Input", "Please enter a valid number.")
+                        
+                        ttk.Button(increase_dialog, text="OK", command=on_ok).pack(pady=10)
+                        
+                        app.root.wait_window(increase_dialog)
+                    
+                    increase_amount = 0
+                    app.root.after(0, ask_for_limit_increase)
+                    # Wait for dialog to complete
+                    while app.root.winfo_exists():
+                        await asyncio.sleep(0.1)
+                        if not any(w.title() == "Increase Spending Limit" for w in app.root.winfo_toplevel().winfo_children() if isinstance(w, tk.Toplevel)):
+                            break
+                    
+                    if increase_amount > 0:
+                        app.increase_spending_limit(increase_amount)
+                        # Now continue with upload
+                        logger.info(f"Spending limit increased by ${increase_amount:.2f}, continuing directory upload")
+                    else:
+                        logger.info("Directory upload cancelled - no spending limit increase")
+                        app.is_processing = False
+                        app.stop_status_animation()
+                        return
+            
+        logger.info("Showing cost confirmation dialog")
+        app._current_operation = None 
+        app.status_label.config(text=f"Quote retrieved: {estimated_cost} ANT for {os.path.basename(dir_path)}")
+        app.stop_status_animation() 
+        proceed = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: messagebox.askyesno("Confirm Upload", f"Estimated cost for directory: {estimated_cost} ANT. Proceed?")
+        )
+        if not proceed:
+            logger.info("Directory upload cancelled by user")
+            app.is_processing = False
+            app.status_label.config(text="Upload cancelled")
+            return
         logger.info("Upload started for directory: %s", dir_path)
         app._current_operation = 'upload' 
         app.status_label.config(text=f"Uploading directory: {os.path.basename(dir_path)}")
@@ -211,6 +416,18 @@ async def upload_public_directory(app, dir_path):
             timeout=15000
         )
         logger.info("Directory uploaded to address: %s for %s ANT", archive_addr, cost)
+        
+        # Track the spending - check if ETH was used
+        if isinstance(cost, tuple) and len(cost) == 2:
+            # This means the price has both ANT and ETH components
+            ant_cost, eth_cost = cost
+            app.track_spending(float(ant_cost))
+            app.track_eth_spending(float(eth_cost))
+            logger.info("ETH payment detected for directory upload: %s ETH", eth_cost)
+        else:
+            # Traditional ANT-only payment
+            app.track_spending(float(cost))
+        
         dir_name = os.path.basename(dir_path)
         app.local_archives.append((archive_addr, dir_name, False))
         app.root.after(0, lambda: app._show_upload_success(archive_addr, dir_name, False))
@@ -366,7 +583,7 @@ def manage_public_files(app):
             should_remove = remove_var.get()
             
             archive_window.destroy()
-            app.root.after(0, lambda: messagebox.showinfo("Archiving Started", "The archiving process has begun. It can take a while..."))
+            app.root.after(0, lambda: messagebox.showinfo("Archiving Started", "Creating archive in progress..."))
 
             selected_files = [(fn, addr, Metadata(size=0)) for fn, addr in selected]
             app.is_processing = True
@@ -813,12 +1030,6 @@ def display_public_files(app, parent_frame):
                                     width=5)
                 copy_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
-        # Configure card styles
-        style = ttk.Style()
-        style.configure("FileCard.TFrame", background=CURRENT_COLORS["bg_light"])
-        style.configure("ArchiveCard.TFrame", background=CURRENT_COLORS["bg_light"])
-        style.configure("Small.TButton", font=("Inter", 9))
-
     def view_file(filename, addr):
         """View a single public file"""
         async def fetch_and_view():
@@ -955,11 +1166,13 @@ def display_public_files(app, parent_frame):
             text="Create Archive", 
             style="Accent.TButton",
             command=lambda: [
-                do_archive(
-                    nickname_entry.get().strip(), 
-                    "Create New Archive" if new_archive_var.get() else archive_combo.get(),
-                    remove_var.get(),
-                    selected
+                asyncio.run_coroutine_threadsafe(
+                    do_archive(
+                        nickname_entry.get().strip(), 
+                        "Create New Archive" if new_archive_var.get() else archive_combo.get(),
+                        remove_var.get(),
+                        selected
+                    ), app.loop
                 ),
                 dialog.destroy()
             ]
